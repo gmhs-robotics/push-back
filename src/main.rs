@@ -19,15 +19,18 @@ struct Robot {
 }
 
 impl Forklift for Robot {
-    async fn lift(&mut self, level: forklift::LiftLevel) -> impl Future<Output = ()> {
+    async fn lift(
+        &mut self,
+        level: forklift::LiftLevel,
+    ) -> Result<(), vexide::devices::smart::motor::MotorError> {
         let position = match level {
-            LiftLevel::Floor => Position::from_degrees(0),
-            LiftLevel::Low => Position::from_degrees(360 / 4),
-            LiftLevel::Medium => Position::from_degrees((360 / 4) * 2),
-            LiftLevel::High => Position::from_degrees((360 / 4) * 3),
+            LiftLevel::Floor => Position::from_degrees(0.),
+            LiftLevel::Low => Position::from_degrees(360. / 4.),
+            LiftLevel::Medium => Position::from_degrees((360. / 4.) * 2.),
+            LiftLevel::High => Position::from_degrees((360. / 4.) * 3.),
         };
 
-        self.lift.set_position_target(position, 200);
+        self.lift.set_position_target(position, 200)
     }
 }
 
@@ -65,19 +68,19 @@ impl Compete for Robot {
             self.right_back.set_voltage(rb * Motor::V5_MAX_VOLTAGE).ok();
 
             if controller_state.button_a.is_now_pressed() {
-                self.lift(LiftLevel::High);
+                self.lift(LiftLevel::High).await.ok();
             }
 
             if controller_state.button_b.is_now_pressed() {
-                self.lift(LiftLevel::Medium);
+                self.lift(LiftLevel::Medium).await.ok();
             }
 
             if controller_state.button_x.is_now_pressed() {
-                self.lift(LiftLevel::Low);
+                self.lift(LiftLevel::Low).await.ok();
             }
 
             if controller_state.button_y.is_now_pressed() {
-                self.lift(LiftLevel::Floor);
+                self.lift(LiftLevel::Floor).await.ok();
             }
 
             sleep(Controller::UPDATE_INTERVAL).await;

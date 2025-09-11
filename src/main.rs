@@ -2,12 +2,17 @@
 #![no_std]
 
 mod forklift;
+mod odometry;
 
+use nalgebra::Vector3;
 use vexide::prelude::*;
 
-use crate::forklift::{Forklift, LiftLevel};
+use crate::{
+    forklift::{Forklift, LiftLevel},
+    odometry::MecanumOdometry,
+};
 
-struct Robot {
+pub struct Robot {
     controller: Controller,
 
     lift: Motor,
@@ -16,22 +21,8 @@ struct Robot {
     left_back: Motor,
     right_front: Motor,
     right_back: Motor,
-}
 
-impl Forklift for Robot {
-    async fn lift(
-        &mut self,
-        level: forklift::LiftLevel,
-    ) -> Result<(), vexide::devices::smart::motor::MotorError> {
-        let position = match level {
-            LiftLevel::Floor => Position::from_degrees(0.),
-            LiftLevel::Low => Position::from_degrees(360. / 4.),
-            LiftLevel::Medium => Position::from_degrees((360. / 4.) * 2.),
-            LiftLevel::High => Position::from_degrees((360. / 4.) * 3.),
-        };
-
-        self.lift.set_position_target(position, 200)
-    }
+    odometry: MecanumOdometry,
 }
 
 impl Compete for Robot {
@@ -44,28 +35,35 @@ impl Compete for Robot {
     async fn driver(&mut self) {
         println!("[competition.driver] rec driver mode");
 
-        // simple mecanum drive
         loop {
             let controller_state = self.controller.state().unwrap_or_default();
 
-            // LY
+            // Forward/Back
+            let lx = controller_state.left_stick.y();
+
+            // Strafe
             let ly = controller_state.left_stick.y();
-            // LX
-            // let axis4 = controller_state.left_stick.x();
-            // RX
-            let ry = controller_state.right_stick.y();
 
-            /* let lf = axis3 + axis4 + axis1;
-            let rf = axis3 - axis4 - axis1;
-            let lb = axis3 - axis4 + axis1;
-            let rb = axis3 + axis4 - axis1;*/
+            // Rotation
+            let rx = controller_state.right_stick.x();
 
-            self.left_front.set_voltage(ly * Motor::V5_MAX_VOLTAGE).ok();
-            self.left_back.set_voltage(ly * Motor::V5_MAX_VOLTAGE).ok();
-            self.right_front
-                .set_voltage(ry * Motor::V5_MAX_VOLTAGE)
+            let v_fl = ly - lx - rx;
+            let v_fr = ly + lx + rx;
+            let v_bl = ly + lx - rx;
+            let v_br = ly - lx + rx;
+
+            self.left_front
+                .set_voltage(v_fl * Motor::V5_MAX_VOLTAGE)
                 .ok();
-            self.right_back.set_voltage(ry * Motor::V5_MAX_VOLTAGE).ok();
+            self.left_back
+                .set_voltage(v_bl * Motor::V5_MAX_VOLTAGE)
+                .ok();
+            self.right_front
+                .set_voltage(v_fr * Motor::V5_MAX_VOLTAGE)
+                .ok();
+            self.right_back
+                .set_voltage(v_br * Motor::V5_MAX_VOLTAGE)
+                .ok();
 
             let level = if controller_state.button_a.is_now_pressed() {
                 Some(LiftLevel::High)
@@ -83,6 +81,31 @@ impl Compete for Robot {
                 self.lift(lift_level).await.ok();
             }
 
+            let lf = self
+                .left_front
+                .raw_position()
+                .map(|x| x.0)
+                .unwrap_or_default();
+            let rf = self
+                .right_front
+                .raw_position()
+                .map(|x| x.0)
+                .unwrap_or_default();
+            let lb = self
+                .left_back
+                .raw_position()
+                .map(|x| x.0)
+                .unwrap_or_default();
+            let rb = self
+                .right_back
+                .raw_position()
+                .map(|x| x.0)
+                .unwrap_or_default();
+
+            let pose = self.odometry.update(lf, rf, lb, rb);
+
+            println!("{}", pose);
+
             sleep(Controller::UPDATE_INTERVAL).await;
         }
     }
@@ -94,7 +117,7 @@ async fn main(peripherals: Peripherals) {
 
     let controller = peripherals.primary_controller;
 
-    println!("[init.motor] init LF(1), LB(2), RF(3), RB(4) on ports");
+    println!("[init.motor] init LF(12), LB(11), RF(2), RB(1), LIFT(5) on ports");
     let left_front = Motor::new(peripherals.port_12, Gearset::Green, Direction::Forward);
     let left_back = Motor::new(peripherals.port_11, Gearset::Green, Direction::Forward);
     let right_front = Motor::new(peripherals.port_2, Gearset::Green, Direction::Reverse);
@@ -105,8 +128,17 @@ async fn main(peripherals: Peripherals) {
     let robot = Robot {
         controller,
 
-        lift,
+        odometry: MecanumOdometry::new(
+            [
+                left_front.raw_position().map(|x| x.0).unwrap_or_default(),
+                right_front.raw_position().map(|x| x.0).unwrap_or_default(),
+                left_back.raw_position().map(|x| x.0).unwrap_or_default(),
+                right_back.raw_position().map(|x| x.0).unwrap_or_default(),
+            ],
+            Vector3::zeros(),
+        ),
 
+        lift,
         left_front,
         left_back,
         right_front,

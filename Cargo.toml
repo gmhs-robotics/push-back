@@ -13,4 +13,5 @@ icon = "cool-x"
 compress = true
 
 [dependencies]
+nalgebra = { version = "0.34.0", default-features = false }
 vexide = "0.7.0"

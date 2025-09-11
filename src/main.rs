@@ -49,23 +49,23 @@ impl Compete for Robot {
             let controller_state = self.controller.state().unwrap_or_default();
 
             // LY
-            let axis3 = controller_state.left_stick.y();
+            let ly = controller_state.left_stick.y();
             // LX
-            let axis4 = controller_state.left_stick.x();
+            // let axis4 = controller_state.left_stick.x();
             // RX
-            let axis1 = controller_state.right_stick.x();
+            let ry = controller_state.right_stick.y();
 
-            let lf = axis3 + axis4 + axis1;
+            /* let lf = axis3 + axis4 + axis1;
             let rf = axis3 - axis4 - axis1;
             let lb = axis3 - axis4 + axis1;
-            let rb = axis3 + axis4 - axis1;
+            let rb = axis3 + axis4 - axis1;*/
 
-            self.left_front.set_voltage(lf * Motor::V5_MAX_VOLTAGE).ok();
+            self.left_front.set_voltage(ly * Motor::V5_MAX_VOLTAGE).ok();
+            self.left_back.set_voltage(ly * Motor::V5_MAX_VOLTAGE).ok();
             self.right_front
-                .set_voltage(rf * Motor::V5_MAX_VOLTAGE)
+                .set_voltage(ry * Motor::V5_MAX_VOLTAGE)
                 .ok();
-            self.left_back.set_voltage(lb * Motor::V5_MAX_VOLTAGE).ok();
-            self.right_back.set_voltage(rb * Motor::V5_MAX_VOLTAGE).ok();
+            self.right_back.set_voltage(ry * Motor::V5_MAX_VOLTAGE).ok();
 
             if controller_state.button_a.is_now_pressed() {
                 self.lift(LiftLevel::High).await.ok();
@@ -95,10 +95,10 @@ async fn main(peripherals: Peripherals) {
     let controller = peripherals.primary_controller;
 
     println!("[init.motor] init LF(1), LB(2), RF(3), RB(4) on ports");
-    let left_front = Motor::new(peripherals.port_1, Gearset::Green, Direction::Forward);
-    let left_back = Motor::new(peripherals.port_2, Gearset::Green, Direction::Forward);
-    let right_front = Motor::new(peripherals.port_3, Gearset::Green, Direction::Forward);
-    let right_back = Motor::new(peripherals.port_4, Gearset::Green, Direction::Forward);
+    let left_front = Motor::new(peripherals.port_12, Gearset::Green, Direction::Forward);
+    let left_back = Motor::new(peripherals.port_11, Gearset::Green, Direction::Forward);
+    let right_front = Motor::new(peripherals.port_2, Gearset::Green, Direction::Reverse);
+    let right_back = Motor::new(peripherals.port_1, Gearset::Green, Direction::Reverse);
 
     let lift = Motor::new(peripherals.port_5, Gearset::Green, Direction::Forward);
 

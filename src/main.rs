@@ -67,20 +67,20 @@ impl Compete for Robot {
             self.left_back.set_voltage(lb * Motor::V5_MAX_VOLTAGE).ok();
             self.right_back.set_voltage(rb * Motor::V5_MAX_VOLTAGE).ok();
 
-            if controller_state.button_a.is_now_pressed() {
-                self.lift(LiftLevel::High).await.ok();
-            }
+            let level = if controller_state.button_a.is_now_pressed() {
+                Some(LiftLevel::High)
+            } else if controller_state.button_b.is_now_pressed() {
+                Some(LiftLevel::Medium)
+            } else if controller_state.button_x.is_now_pressed() {
+                Some(LiftLevel::Low)
+            } else if controller_state.button_y.is_now_pressed() {
+                Some(LiftLevel::Floor)
+            } else {
+                None
+            };
 
-            if controller_state.button_b.is_now_pressed() {
-                self.lift(LiftLevel::Medium).await.ok();
-            }
-
-            if controller_state.button_x.is_now_pressed() {
-                self.lift(LiftLevel::Low).await.ok();
-            }
-
-            if controller_state.button_y.is_now_pressed() {
-                self.lift(LiftLevel::Floor).await.ok();
+            if let Some(lift_level) = level {
+                self.lift(lift_level).await.ok();
             }
 
             sleep(Controller::UPDATE_INTERVAL).await;

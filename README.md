@@ -1,4 +1,6 @@
-# vexide Template
+# GMHS push-back
+
+![robot1](/robot1.jpeg)
 
 [![Build status](https://github.com/vexide/vexide-template/actions/workflows/build.yml/badge.svg)](https://github.com/vexide/vexide-template/actions/workflows/build.yml)
 

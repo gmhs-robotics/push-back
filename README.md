@@ -1,6 +1,6 @@
 # GMHS push-back
 
-![robot1](/robot1.jpeg)
+![robot](/photos/robot.jpeg)
 
 [![Build status](https://github.com/vexide/vexide-template/actions/workflows/build.yml/badge.svg)](https://github.com/vexide/vexide-template/actions/workflows/build.yml)
 
@@ -25,7 +25,11 @@ Seasoned vexide user? Delete README.md and update Cargo.toml as needed.
 
 ## Using This Template
 
-To create a project using this template, click the "[Use this template](https://github.com/new?template_name=vexide-template&template_owner=vexide)" button in the upper right corner of the GitHub repository. Choose an appropriate name and clone the new repository using Git. Finally, update the package name in `Cargo.toml`:
+To create a project using this template, click the
+"[Use this template](https://github.com/new?template_name=vexide-template&template_owner=vexide)"
+button in the upper right corner of the GitHub repository. Choose an appropriate
+name and clone the new repository using Git. Finally, update the package name in
+`Cargo.toml`:
 
 ```toml
 [package]
@@ -43,13 +47,17 @@ icon = "cool-x"
 compress = true
 ```
 
-> See our [Building & Uploading tutorial](https://vexide.dev/docs/building-uploading/) for more information.
+> See our
+> [Building & Uploading tutorial](https://vexide.dev/docs/building-uploading/)
+> for more information.
 
 ## Getting Started (Windows)
 
-Follow the instructions [here](https://www.rust-lang.org/tools/install) to install `rustup`.
+Follow the instructions [here](https://www.rust-lang.org/tools/install) to
+install `rustup`.
 
-Run the following commands in Powershell to set up your PC for development on Windows.
+Run the following commands in Powershell to set up your PC for development on
+Windows.
 
 - Switch to the `nightly` rust toolchain and add the `rust-src` component:
 
@@ -66,9 +74,11 @@ Run the following commands in Powershell to set up your PC for development on Wi
 
 ## Getting Started (macOS)
 
-Follow the instructions [here](https://www.rust-lang.org/tools/install) to install `rustup` on your Mac.
+Follow the instructions [here](https://www.rust-lang.org/tools/install) to
+install `rustup` on your Mac.
 
-Run the following commands in a terminal window to setup development with vexide.
+Run the following commands in a terminal window to setup development with
+vexide.
 
 - Open a terminal and configure `rustup` to build for the V5's platform target:
 
@@ -87,13 +97,17 @@ Run the following commands in a terminal window to setup development with vexide
 
 ## Getting Started (NixOS)
 
-The Nix flake includes a devshell with every tool you need for building and uploading vexide projects.
+The Nix flake includes a devshell with every tool you need for building and
+uploading vexide projects.
 
 There is a `.envrc` file for Nix + Direnv users.
 
 ## Getting Started (Debian/Ubuntu Linux)
 
-Follow the instructions [here](https://www.rust-lang.org/tools/install) to install `rustup`. You may also prefer to install it from your system package manager or by other means. Instructions on that can be found [here](https://rust-lang.github.io/rustup/installation/other.html).
+Follow the instructions [here](https://www.rust-lang.org/tools/install) to
+install `rustup`. You may also prefer to install it from your system package
+manager or by other means. Instructions on that can be found
+[here](https://rust-lang.github.io/rustup/installation/other.html).
 
 Run the following terminal commands to set up development on Debian or Ubuntu.
 
@@ -130,7 +144,8 @@ Run the following terminal commands to set up your PC for development on Fedora.
 
 ## Learn
 
-[Check out the documentation](https://vexide.dev/docs/) on the official vexide website for walkthrough-style guides and other helpful learning resources!
+[Check out the documentation](https://vexide.dev/docs/) on the official vexide
+website for walkthrough-style guides and other helpful learning resources!
 
 An [API reference](https://docs.rs/vexide) is also provided by docs.rs.
 
@@ -144,7 +159,9 @@ Use the cargo-v5 terminal utility to build and upload this vexide project.
 cargo v5 build
 ```
 
-Use a USB cable to connect to your robot brain or to your controller before using the `upload` subcommand to build and upload the project. Make sure to specify a program slot.
+Use a USB cable to connect to your robot brain or to your controller before
+using the `upload` subcommand to build and upload the project. Make sure to
+specify a program slot.
 
 ```console
 cargo v5 upload
@@ -152,8 +169,8 @@ cargo v5 upload
 
 ### Viewing program output
 
-You can view panic messages and calls to `println!()` using the terminal.
-Use a USB cable to connect to your robot brain or controller, then start the terminal:
+You can view panic messages and calls to `println!()` using the terminal. Use a
+USB cable to connect to your robot brain or controller, then start the terminal:
 
 ```console
 cargo v5 terminal

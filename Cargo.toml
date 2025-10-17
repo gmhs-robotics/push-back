@@ -12,5 +12,12 @@ slot = 1
 icon = "cool-x"
 compress = true
 
+[profile.release]
+strip = true
+lto = true
+opt-level = 3
+codegen-units = 1
+
 [dependencies]
+ryu = "1.0.20"
 vexide = "0.7.0"

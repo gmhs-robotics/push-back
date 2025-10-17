@@ -1,35 +1,43 @@
 #![no_main]
 #![no_std]
 
-use core::{f64::consts::PI, time::Duration};
+use core::time::Duration;
 
+use crate::ai::Ai;
 use vexide::{
-    devices::{math::Point2, smart::GpsSensor},
+    devices::{
+        display::{self, Font, FontSize, RenderMode, Text},
+        math::Point2,
+        smart::GpsSensor,
+    },
     prelude::*,
 };
 
-use crate::path::{Goal, GoalPath};
+extern crate alloc;
 
-mod path;
+mod ai;
 
-const MAX_WHEEL: f64 = Motor::V5_MAX_VOLTAGE;
+pub const MAX_WHEEL: f64 = Motor::V5_MAX_VOLTAGE * 0.85;
+pub const MAX_AUTO: f64 = Motor::V5_MAX_VOLTAGE * 0.4;
 
 // All in metres
 const INCH_TO_METER: f64 = 0.0254;
 const WHEEL_DIAMETER: f64 = 4. * INCH_TO_METER;
-const TRACK_WIDTH: f64 = 0.381;
+// const TRACK_WIDTH: f64 = 14. * INCH_TO_METER;
 
 // To rotate the body of the robot N degrees, spin the left/right wheels by ROBOT_TO_WHEEL_ROT * N,
 // and the opposite side by -ROBOT_TO_WHEEL_ROT * N degrees. Swap which wheels get the negative to
 // change turning direction. This works for both radians and degrees, the input and output are
 // consistent with units.
-const ROBOT_TO_WHEEL_ROT: f64 = TRACK_WIDTH / WHEEL_DIAMETER;
+const ROBOT_TO_WHEEL_ROT: f64 = 2100. / 360.0; // TRACK_WIDTH / WHEEL_DIAMETER;
 
 pub struct Robot {
     controller: Controller,
 
     // https://pros.cs.purdue.edu/v5/_images/gps_get_position.jpg
     gps: GpsSensor,
+
+    display: Display,
 
     intake: Motor,
     outtake: Motor,
@@ -45,10 +53,111 @@ impl Compete for Robot {
     async fn autonomous(&mut self) {
         println!("[competition.autonomous] rec autonomous mode");
 
-        let path: &GoalPath = &[Goal {
-            position: Point2 { x: 0.5, y: 0.5 },
-            rotation: 180.,
-        }];
+        self.rotate_to(180.).await;
+        sleep(Duration::from_secs(2)).await;
+        self.rotate_to(0.).await;
+
+        /* self.left_front.set_voltage(0.).ok();
+        self.left_back.set_voltage(0.).ok();
+        self.right_front.set_voltage(0.).ok();
+        self.right_back.set_voltage(0.).ok();
+
+        let mut buffer = ryu::Buffer::new();
+
+        self.left_front.set_voltage(MAX_AUTO).ok();
+        self.left_back.set_voltage(MAX_AUTO).ok();
+        self.right_front.set_voltage(-MAX_AUTO).ok();
+        self.right_back.set_voltage(-MAX_AUTO).ok();
+
+        loop {
+            let rotation = match self.gps.heading() {
+                Ok(r) => r,
+                Err(_) => {
+                    continue;
+                }
+            };
+
+            if rotation > 165. && rotation < 185. {
+                break;
+            }
+
+            self.display.erase(Rgb::new(0, 0, 0));
+
+            self.display.draw_text(
+                &Text::new(
+                    buffer.format(rotation.ceil()),
+                    Font::new(FontSize::EXTRA_LARGE, display::FontFamily::Monospace),
+                    Point2 { x: 0, y: 0 },
+                ),
+                Rgb::new(255, 255, 255),
+                None,
+            );
+
+            self.display.render();
+
+            sleep(GpsSensor::UPDATE_INTERVAL + Display::REFRESH_INTERVAL).await;
+        }
+
+        self.left_front.set_voltage(0.).ok();
+        self.left_back.set_voltage(0.).ok();
+        self.right_front.set_voltage(0.).ok();
+        self.right_back.set_voltage(0.).ok();
+
+        loop {
+            let rotation = match self.gps.heading() {
+                Ok(r) => r,
+                Err(_) => {
+                    continue;
+                }
+            };
+
+            self.display.erase(Rgb::new(0, 0, 0));
+
+            self.display.draw_text(
+                &Text::new(
+                    buffer.format(rotation.ceil()),
+                    Font::new(FontSize::EXTRA_LARGE, display::FontFamily::Monospace),
+                    Point2 { x: 0, y: 0 },
+                ),
+                Rgb::new(255, 255, 255),
+                None,
+            );
+
+            self.display.render();
+
+            sleep(GpsSensor::UPDATE_INTERVAL + Display::REFRESH_INTERVAL).await;
+        }*/
+
+        /*loop {
+            let rotation = match self.gps.position() {
+                Ok(r) => r.x,
+                Err(_) => -6.0,
+            };
+
+            let mut buffer = ryu::Buffer::new();
+            self.display.draw_text(
+                &Text::new(
+                    buffer.format(rotation),
+                    Font::new(FontSize::EXTRA_LARGE, display::FontFamily::Monospace),
+                    Point2 { x: 100, y: 100 },
+                ),
+                Rgb::new(255, 255, 255),
+                None,
+            );
+
+            sleep(GpsSensor::UPDATE_INTERVAL).await;
+        }*/
+
+        /* let path: &GoalPath = &[
+            Goal {
+                position: Point2 { x: 0.5, y: 0.5 },
+                rotation: 180.,
+            },
+            /*            Goal {
+                position: Point2 { x: 0., y: 0. },
+                rotation: 0.,
+            },*/
+        ];
 
         for goal in path {
             loop {
@@ -66,33 +175,50 @@ impl Compete for Robot {
                     }
                 };
 
-                const RPM: i32 = 10;
+                const RPM: i32 = 100;
 
-                // Rotate
                 {
-                    let dr = ((goal.rotation - rotation + 180.0) % 360.0) - 180.0;
+                    // Rotation logic
+                    let dr = goal.rotation - rotation;
+                    println!("to rotate (Z-AXIS): {dr}");
+
+                    // Calculate the shortest direction of rotation (clockwise or counter-clockwise)
+                    let dr = if dr > 180.0 {
+                        dr - 360.0 // Rotate counter-clockwise
+                    } else if dr < -180.0 {
+                        dr + 360.0 // Rotate clockwise
+                    } else {
+                        dr // No adjustment needed
+                    };
+
+                    println!("Optimized rotation angle: {dr}");
 
                     let wheel_rot = ROBOT_TO_WHEEL_ROT * dr;
+                    println!("to rotate (wheel): {wheel_rot}");
 
-                    let left_rot = if dr >= 180. { -wheel_rot } else { wheel_rot };
-                    let right_rot = if dr < 180. { wheel_rot } else { -wheel_rot };
+                    let time = Duration::from_secs_f64(wheel_rot / (RPM as f64 * 6.0));
 
-                    let time = Duration::from_secs_f64(wheel_rot / (RPM as f64 * 6.));
+                    // Reset positions
+                    self.left_front.reset_position().ok();
+                    self.left_back.reset_position().ok();
+                    self.right_front.reset_position().ok();
+                    self.right_back.reset_position().ok();
 
-                    let left_target = MotorControl::Position(Position::from_degrees(left_rot), RPM);
+                    let left_target =
+                        MotorControl::Position(Position::from_degrees(-wheel_rot), RPM);
                     let right_target =
-                        MotorControl::Position(Position::from_degrees(right_rot), RPM);
+                        MotorControl::Position(Position::from_degrees(wheel_rot), RPM);
 
                     self.left_front.set_target(left_target).ok();
                     self.left_back.set_target(left_target).ok();
-
                     self.right_front.set_target(right_target).ok();
                     self.right_back.set_target(right_target).ok();
 
+                    // Wait for the rotation to complete
                     sleep(time).await;
                 }
 
-                // Drive
+                // Drive logic
                 {
                     let dx = goal.position.x - position.x;
                     let dy = goal.position.y - position.y;
@@ -103,19 +229,27 @@ impl Compete for Robot {
                     let drive_target =
                         MotorControl::Position(Position::from_revolutions(revolutions), RPM);
 
+                    // Reset positions
+                    self.left_front.reset_position().ok();
+                    self.left_back.reset_position().ok();
+                    self.right_front.reset_position().ok();
+                    self.right_back.reset_position().ok();
+
                     self.left_front.set_target(drive_target).ok();
                     self.left_back.set_target(drive_target).ok();
                     self.right_front.set_target(drive_target).ok();
                     self.right_back.set_target(drive_target).ok();
 
-                    let time = Duration::from_secs_f64((revolutions / RPM as f64) * 60.);
+                    // Calculate time to drive, ensuring it's non-negative
+                    let time = Duration::from_secs_f64((revolutions / RPM as f64) * 60.0);
 
+                    // Wait for the drive to complete
                     sleep(time).await;
                 }
 
                 break;
             }
-        }
+        }*/
     }
 
     async fn driver(&mut self) {
@@ -192,11 +326,15 @@ async fn main(peripherals: Peripherals) {
     // Decides which hole the balls go out
     let router = Motor::new(peripherals.port_4, Gearset::Green, Direction::Forward);
 
+    let mut display = peripherals.display;
+
+    display.set_render_mode(RenderMode::DoubleBuffered);
+
     let gps = GpsSensor::new(
-        peripherals.port_15,
-        Point2 { x: 0., y: 0. },
-        Point2 { x: 0., y: 0. },
-        180.,
+        peripherals.port_20,
+        Point2 { x: 0., y: -0.08 },
+        Point2 { x: 1.41, y: -0.7 },
+        270.,
     );
 
     let robot = Robot {
@@ -207,6 +345,8 @@ async fn main(peripherals: Peripherals) {
         router,
 
         gps,
+
+        display,
 
         left_front,
         left_back,

@@ -3,45 +3,43 @@
 
 use core::time::Duration;
 
-use crate::ai::Ai;
 use vexide::{
-    devices::{
-        display::{self, Font, FontSize, RenderMode, Text},
-        math::Point2,
-        smart::GpsSensor,
-    },
+    devices::{math::Point2, smart::GpsSensor},
     prelude::*,
+};
+
+use crate::{
+    ai::Ai,
+    balls::{Intake, Router},
+    teams::{ALLIANCE, Alliance, SIDE, Side},
 };
 
 extern crate alloc;
 
 mod ai;
+mod balls;
+mod teams;
 
 pub const MAX_WHEEL: f64 = Motor::V5_MAX_VOLTAGE * 0.85;
 pub const MAX_AUTO: f64 = Motor::V5_MAX_VOLTAGE * 0.4;
 
-// All in metres
-const INCH_TO_METER: f64 = 0.0254;
-const WHEEL_DIAMETER: f64 = 4. * INCH_TO_METER;
+pub const INCH_TO_METER: f64 = 0.0254;
+pub const WHEEL_DIAMETER: f64 = 4. * INCH_TO_METER;
 // const TRACK_WIDTH: f64 = 14. * INCH_TO_METER;
 
 // To rotate the body of the robot N degrees, spin the left/right wheels by ROBOT_TO_WHEEL_ROT * N,
 // and the opposite side by -ROBOT_TO_WHEEL_ROT * N degrees. Swap which wheels get the negative to
 // change turning direction. This works for both radians and degrees, the input and output are
 // consistent with units.
-const ROBOT_TO_WHEEL_ROT: f64 = 2100. / 360.0; // TRACK_WIDTH / WHEEL_DIAMETER;
+// const ROBOT_TO_WHEEL_ROT: f64 = 2100. / 360.0; // TRACK_WIDTH / WHEEL_DIAMETER;
 
 pub struct Robot {
     controller: Controller,
 
-    // https://pros.cs.purdue.edu/v5/_images/gps_get_position.jpg
     gps: GpsSensor,
 
-    display: Display,
-
-    intake: Motor,
-    outtake: Motor,
-    router: Motor,
+    intake: Intake,
+    router: Router,
 
     left_front: Motor,
     left_back: Motor,
@@ -51,210 +49,43 @@ pub struct Robot {
 
 impl Compete for Robot {
     async fn autonomous(&mut self) {
-        println!("[competition.autonomous] rec autonomous mode");
+        self.intake.forward().ok();
+        self.drive_by(1.2).await;
+        self.intake.disable().ok();
 
-        self.rotate_to(180.).await;
-        sleep(Duration::from_secs(2)).await;
-        self.rotate_to(0.).await;
-
-        /* self.left_front.set_voltage(0.).ok();
-        self.left_back.set_voltage(0.).ok();
-        self.right_front.set_voltage(0.).ok();
-        self.right_back.set_voltage(0.).ok();
-
-        let mut buffer = ryu::Buffer::new();
-
-        self.left_front.set_voltage(MAX_AUTO).ok();
-        self.left_back.set_voltage(MAX_AUTO).ok();
-        self.right_front.set_voltage(-MAX_AUTO).ok();
-        self.right_back.set_voltage(-MAX_AUTO).ok();
-
-        loop {
-            let rotation = match self.gps.heading() {
-                Ok(r) => r,
-                Err(_) => {
-                    continue;
-                }
-            };
-
-            if rotation > 165. && rotation < 185. {
-                break;
-            }
-
-            self.display.erase(Rgb::new(0, 0, 0));
-
-            self.display.draw_text(
-                &Text::new(
-                    buffer.format(rotation.ceil()),
-                    Font::new(FontSize::EXTRA_LARGE, display::FontFamily::Monospace),
-                    Point2 { x: 0, y: 0 },
-                ),
-                Rgb::new(255, 255, 255),
-                None,
-            );
-
-            self.display.render();
-
-            sleep(GpsSensor::UPDATE_INTERVAL + Display::REFRESH_INTERVAL).await;
+        match ALLIANCE {
+            Alliance::Red => self.rotate_to(270.).await,
+            Alliance::Blue => self.rotate_to(90.).await,
         }
 
-        self.left_front.set_voltage(0.).ok();
-        self.left_back.set_voltage(0.).ok();
-        self.right_front.set_voltage(0.).ok();
-        self.right_back.set_voltage(0.).ok();
+        self.drive_by(0.6).await;
 
-        loop {
-            let rotation = match self.gps.heading() {
-                Ok(r) => r,
-                Err(_) => {
-                    continue;
-                }
-            };
+        match (ALLIANCE, SIDE) {
+            (Alliance::Blue, Side::Left) => self.rotate_to(180.).await,
+            (Alliance::Blue, Side::Right) => self.rotate_to(0.).await,
+            (Alliance::Red, Side::Left) => self.rotate_to(0.).await,
+            (Alliance::Red, Side::Right) => self.rotate_to(180.).await,
+        }
 
-            self.display.erase(Rgb::new(0, 0, 0));
+        self.drive_by(0.6).await;
 
-            self.display.draw_text(
-                &Text::new(
-                    buffer.format(rotation.ceil()),
-                    Font::new(FontSize::EXTRA_LARGE, display::FontFamily::Monospace),
-                    Point2 { x: 0, y: 0 },
-                ),
-                Rgb::new(255, 255, 255),
-                None,
-            );
+        match ALLIANCE {
+            Alliance::Red => self.rotate_to(270.).await,
+            Alliance::Blue => self.rotate_to(90.).await,
+        }
 
-            self.display.render();
+        self.drive_by(-0.5).await;
 
-            sleep(GpsSensor::UPDATE_INTERVAL + Display::REFRESH_INTERVAL).await;
-        }*/
+        self.intake.reverse().ok();
+        self.router.reverse().ok();
 
-        /*loop {
-            let rotation = match self.gps.position() {
-                Ok(r) => r.x,
-                Err(_) => -6.0,
-            };
+        sleep(Duration::from_secs(3)).await;
 
-            let mut buffer = ryu::Buffer::new();
-            self.display.draw_text(
-                &Text::new(
-                    buffer.format(rotation),
-                    Font::new(FontSize::EXTRA_LARGE, display::FontFamily::Monospace),
-                    Point2 { x: 100, y: 100 },
-                ),
-                Rgb::new(255, 255, 255),
-                None,
-            );
-
-            sleep(GpsSensor::UPDATE_INTERVAL).await;
-        }*/
-
-        /* let path: &GoalPath = &[
-            Goal {
-                position: Point2 { x: 0.5, y: 0.5 },
-                rotation: 180.,
-            },
-            /*            Goal {
-                position: Point2 { x: 0., y: 0. },
-                rotation: 0.,
-            },*/
-        ];
-
-        for goal in path {
-            loop {
-                let position = match self.gps.position() {
-                    Ok(p) => p,
-                    Err(_) => {
-                        continue;
-                    }
-                };
-
-                let rotation = match self.gps.heading() {
-                    Ok(h) => h,
-                    Err(_) => {
-                        continue;
-                    }
-                };
-
-                const RPM: i32 = 100;
-
-                {
-                    // Rotation logic
-                    let dr = goal.rotation - rotation;
-                    println!("to rotate (Z-AXIS): {dr}");
-
-                    // Calculate the shortest direction of rotation (clockwise or counter-clockwise)
-                    let dr = if dr > 180.0 {
-                        dr - 360.0 // Rotate counter-clockwise
-                    } else if dr < -180.0 {
-                        dr + 360.0 // Rotate clockwise
-                    } else {
-                        dr // No adjustment needed
-                    };
-
-                    println!("Optimized rotation angle: {dr}");
-
-                    let wheel_rot = ROBOT_TO_WHEEL_ROT * dr;
-                    println!("to rotate (wheel): {wheel_rot}");
-
-                    let time = Duration::from_secs_f64(wheel_rot / (RPM as f64 * 6.0));
-
-                    // Reset positions
-                    self.left_front.reset_position().ok();
-                    self.left_back.reset_position().ok();
-                    self.right_front.reset_position().ok();
-                    self.right_back.reset_position().ok();
-
-                    let left_target =
-                        MotorControl::Position(Position::from_degrees(-wheel_rot), RPM);
-                    let right_target =
-                        MotorControl::Position(Position::from_degrees(wheel_rot), RPM);
-
-                    self.left_front.set_target(left_target).ok();
-                    self.left_back.set_target(left_target).ok();
-                    self.right_front.set_target(right_target).ok();
-                    self.right_back.set_target(right_target).ok();
-
-                    // Wait for the rotation to complete
-                    sleep(time).await;
-                }
-
-                // Drive logic
-                {
-                    let dx = goal.position.x - position.x;
-                    let dy = goal.position.y - position.y;
-                    let dxy = (dx * dx + dy * dy).sqrt();
-
-                    let revolutions = dxy / (PI * WHEEL_DIAMETER);
-
-                    let drive_target =
-                        MotorControl::Position(Position::from_revolutions(revolutions), RPM);
-
-                    // Reset positions
-                    self.left_front.reset_position().ok();
-                    self.left_back.reset_position().ok();
-                    self.right_front.reset_position().ok();
-                    self.right_back.reset_position().ok();
-
-                    self.left_front.set_target(drive_target).ok();
-                    self.left_back.set_target(drive_target).ok();
-                    self.right_front.set_target(drive_target).ok();
-                    self.right_back.set_target(drive_target).ok();
-
-                    // Calculate time to drive, ensuring it's non-negative
-                    let time = Duration::from_secs_f64((revolutions / RPM as f64) * 60.0);
-
-                    // Wait for the drive to complete
-                    sleep(time).await;
-                }
-
-                break;
-            }
-        }*/
+        self.intake.disable().ok();
+        self.router.disable().ok();
     }
 
     async fn driver(&mut self) {
-        println!("[competition.driver] rec driver mode");
-
         loop {
             let controller_state = self.controller.state().unwrap_or_default();
 
@@ -284,22 +115,19 @@ impl Compete for Robot {
             let rou_bw = controller_state.button_l2.is_pressed();
 
             if int_fw && !int_bw {
-                self.intake.set_voltage(Motor::V5_MAX_VOLTAGE).ok();
-                self.outtake.set_voltage(Motor::V5_MAX_VOLTAGE).ok();
+                self.intake.forward().ok();
             } else if int_bw && !int_fw {
-                self.intake.set_voltage(-Motor::V5_MAX_VOLTAGE).ok();
-                self.outtake.set_voltage(-Motor::V5_MAX_VOLTAGE).ok();
+                self.intake.reverse().ok();
             } else {
-                self.intake.set_voltage(0.).ok();
-                self.outtake.set_voltage(0.).ok();
+                self.intake.disable().ok();
             }
 
             if rou_fw && !rou_bw {
-                self.router.set_voltage(Motor::V5_MAX_VOLTAGE).ok();
+                self.router.forward().ok();
             } else if rou_bw && !rou_fw {
-                self.router.set_voltage(-Motor::V5_MAX_VOLTAGE).ok();
+                self.router.reverse().ok();
             } else {
-                self.router.set_voltage(0.).ok();
+                self.router.disable().ok();
             }
 
             sleep(Controller::UPDATE_INTERVAL).await;
@@ -309,11 +137,8 @@ impl Compete for Robot {
 
 #[vexide::main]
 async fn main(peripherals: Peripherals) {
-    println!("[init.begin] starting init");
-
     let controller = peripherals.primary_controller;
 
-    println!("[init.motor] init LF(10), LB(9), RF(1), RB(2), IN(11), OUT(3), ROU(4) on ports");
     let left_front = Motor::new(peripherals.port_10, Gearset::Green, Direction::Forward);
     let left_back = Motor::new(peripherals.port_9, Gearset::Green, Direction::Forward);
     let right_front = Motor::new(peripherals.port_1, Gearset::Green, Direction::Reverse);
@@ -326,9 +151,9 @@ async fn main(peripherals: Peripherals) {
     // Decides which hole the balls go out
     let router = Motor::new(peripherals.port_4, Gearset::Green, Direction::Forward);
 
-    let mut display = peripherals.display;
+    // let mut display = peripherals.display;
 
-    display.set_render_mode(RenderMode::DoubleBuffered);
+    // display.set_render_mode(RenderMode::DoubleBuffered);
 
     let gps = GpsSensor::new(
         peripherals.port_20,
@@ -340,20 +165,17 @@ async fn main(peripherals: Peripherals) {
     let robot = Robot {
         controller,
 
-        intake,
-        outtake,
-        router,
+        intake: Intake { intake, outtake },
+        router: Router { router },
 
         gps,
 
-        display,
-
+        // display,
         left_front,
         left_back,
         right_front,
         right_back,
     };
 
-    println!("[init.ready] Ready, entering competition mode");
     robot.compete().await;
 }

@@ -20,6 +20,6 @@ codegen-units = 1
 
 [dependencies]
 autons = "0.1.0"
+evian = { version = "0.3.0-rc.1", git = "https://github.com/vexide/evian" }
 pid = "4.0.0"
-ryu = "1.0.20"
 vexide = "0.7.0"

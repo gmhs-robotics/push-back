@@ -3,6 +3,11 @@
 
 use core::time::Duration;
 
+use autons::{
+    prelude::{SelectCompete, SelectCompeteExt},
+    route,
+    simple::SimpleSelect,
+};
 use vexide::{
     devices::{math::Point2, smart::GpsSensor},
     prelude::*,
@@ -11,7 +16,7 @@ use vexide::{
 use crate::{
     ai::Ai,
     balls::{Intake, Router},
-    teams::{ALLIANCE, Alliance, SIDE, Side},
+    teams::*,
 };
 
 extern crate alloc;
@@ -20,7 +25,7 @@ mod ai;
 mod balls;
 mod teams;
 
-pub const MAX_WHEEL: f64 = Motor::V5_MAX_VOLTAGE * 0.85;
+pub const MAX_WHEEL: f64 = Motor::V5_MAX_VOLTAGE;
 pub const MAX_AUTO: f64 = Motor::V5_MAX_VOLTAGE * 0.4;
 
 pub const INCH_TO_METER: f64 = 0.0254;
@@ -37,7 +42,6 @@ pub struct Robot {
     controller: Controller,
 
     gps: GpsSensor,
-
     intake: Intake,
     router: Router,
 
@@ -47,20 +51,20 @@ pub struct Robot {
     right_back: Motor,
 }
 
-impl Compete for Robot {
-    async fn autonomous(&mut self) {
+impl Robot {
+    async fn autonomous(&mut self, alliance: Alliance, side: Side) {
         self.intake.forward().ok();
         self.drive_by(1.2).await;
         self.intake.disable().ok();
 
-        match ALLIANCE {
+        match alliance {
             Alliance::Red => self.rotate_to(270.).await,
             Alliance::Blue => self.rotate_to(90.).await,
         }
 
         self.drive_by(0.6).await;
 
-        match (ALLIANCE, SIDE) {
+        match (alliance, side) {
             (Alliance::Blue, Side::Left) => self.rotate_to(180.).await,
             (Alliance::Blue, Side::Right) => self.rotate_to(0.).await,
             (Alliance::Red, Side::Left) => self.rotate_to(0.).await,
@@ -69,7 +73,7 @@ impl Compete for Robot {
 
         self.drive_by(0.6).await;
 
-        match ALLIANCE {
+        match alliance {
             Alliance::Red => self.rotate_to(270.).await,
             Alliance::Blue => self.rotate_to(90.).await,
         }
@@ -85,6 +89,24 @@ impl Compete for Robot {
         self.router.disable().ok();
     }
 
+    async fn route_red_left(&mut self) {
+        self.autonomous(Alliance::Red, Side::Left).await
+    }
+
+    async fn route_red_right(&mut self) {
+        self.autonomous(Alliance::Red, Side::Right).await
+    }
+
+    async fn route_blue_left(&mut self) {
+        self.autonomous(Alliance::Blue, Side::Left).await
+    }
+
+    async fn route_blue_right(&mut self) {
+        self.autonomous(Alliance::Blue, Side::Right).await
+    }
+}
+
+impl SelectCompete for Robot {
     async fn driver(&mut self) {
         loop {
             let controller_state = self.controller.state().unwrap_or_default();
@@ -151,12 +173,8 @@ async fn main(peripherals: Peripherals) {
     // Decides which hole the balls go out
     let router = Motor::new(peripherals.port_4, Gearset::Green, Direction::Forward);
 
-    // let mut display = peripherals.display;
-
-    // display.set_render_mode(RenderMode::DoubleBuffered);
-
     let gps = GpsSensor::new(
-        peripherals.port_20,
+        peripherals.port_19,
         Point2 { x: 0., y: -0.08 },
         Point2 { x: 1.41, y: -0.7 },
         270.,
@@ -170,12 +188,21 @@ async fn main(peripherals: Peripherals) {
 
         gps,
 
-        // display,
         left_front,
         left_back,
         right_front,
         right_back,
     };
 
-    robot.compete().await;
+    robot
+        .compete(SimpleSelect::new(
+            peripherals.display,
+            [
+                route!("Red, Left", Robot::route_red_left),
+                route!("Red, Right", Robot::route_red_right),
+                route!("Blue, Left", Robot::route_blue_left),
+                route!("Blue, Right", Robot::route_blue_right),
+            ],
+        ))
+        .await;
 }

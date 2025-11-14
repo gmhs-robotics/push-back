@@ -19,5 +19,7 @@ opt-level = 3
 codegen-units = 1
 
 [dependencies]
+autons = "0.1.0"
+pid = "4.0.0"
 ryu = "1.0.20"
 vexide = "0.7.0"

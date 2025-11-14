@@ -1,55 +1,10 @@
-# GMHS push-back
+# Garces Memorial High School `push-back`
+
+> GMHS's Team `28001A` 2025-2026 V5RC Push-Back entry
 
 ![robot](/photos/robot.jpeg)
 
-[![Build status](https://github.com/vexide/vexide-template/actions/workflows/build.yml/badge.svg)](https://github.com/vexide/vexide-template/actions/workflows/build.yml)
-
-> Ready-to-use template for developing VEX V5 robots in Rust.
-
-Seasoned vexide user? Delete README.md and update Cargo.toml as needed.
-
-## Table of Contents
-
-- [vexide Template](#vexide-template)
-  - [Table of Contents](#table-of-contents)
-  - [Using This Template](#using-this-template)
-  - [Getting Started (Windows)](#getting-started-windows)
-  - [Getting Started (macOS)](#getting-started-macos)
-  - [Getting Started (NixOS)](#getting-started-nixos)
-  - [Getting Started (Debian/Ubuntu Linux)](#getting-started-debianubuntu-linux)
-  - [Getting Started (Fedora Linux)](#getting-started-fedora-linux)
-  - [Learn](#learn)
-  - [Development](#development)
-    - [Compiling and uploading to a VEX V5 robot](#compiling-and-uploading-to-a-vex-v5-robot)
-    - [Viewing program output](#viewing-program-output)
-
-## Using This Template
-
-To create a project using this template, click the
-"[Use this template](https://github.com/new?template_name=vexide-template&template_owner=vexide)"
-button in the upper right corner of the GitHub repository. Choose an appropriate
-name and clone the new repository using Git. Finally, update the package name in
-`Cargo.toml`:
-
-```toml
-[package]
-name = "my-vex-robot"
-version = "0.1.0"
-edition = "2021"
-```
-
-You can also configure your program slot and upload behavior in `Cargo.toml`:
-
-```toml
-[package.metadata.v5]
-slot = 1
-icon = "cool-x"
-compress = true
-```
-
-> See our
-> [Building & Uploading tutorial](https://vexide.dev/docs/building-uploading/)
-> for more information.
+# Compiling and Usage
 
 ## Getting Started (Windows)
 
@@ -141,13 +96,6 @@ Run the following terminal commands to set up your PC for development on Fedora.
   rustup component add rust-src
   cargo install cargo-v5
   ```
-
-## Learn
-
-[Check out the documentation](https://vexide.dev/docs/) on the official vexide
-website for walkthrough-style guides and other helpful learning resources!
-
-An [API reference](https://docs.rs/vexide) is also provided by docs.rs.
 
 ## Development
 

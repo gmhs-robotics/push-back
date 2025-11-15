@@ -1,31 +1,21 @@
 #![no_main]
 #![no_std]
 
-use core::time::Duration;
-
 use autons::{
     prelude::{SelectCompete, SelectCompeteExt},
     route,
     simple::SimpleSelect,
 };
-use evian::{
-    control::loops::{AngularPid, Pid},
-    drivetrain::model::Mecanum,
-    motion::Basic,
-    prelude::*,
-};
-use vexide::{
-    devices::{math::Point2, smart::GpsSensor},
-    prelude::*,
-};
+use evian::{drivetrain::model::Mecanum, prelude::*};
+use vexide::prelude::*;
 
 use crate::{
-    gps::GpsTracking,
+    auton::FRAMES,
     mechanisms::{Intake, Router},
     teams::*,
 };
 
-const LINEAR_PID: Pid = Pid::new(1.0, 0.0, 0.125, None);
+/*const LINEAR_PID: Pid = Pid::new(1.0, 0.0, 0.125, None);
 const ANGULAR_PID: AngularPid = AngularPid::new(16.0, 0.0, 1.0, None);
 const LINEAR_TOLERANCES: Tolerances = Tolerances::new()
     .error(4.0)
@@ -34,11 +24,11 @@ const LINEAR_TOLERANCES: Tolerances = Tolerances::new()
 const ANGULAR_TOLERANCES: Tolerances = Tolerances::new()
     .error(f64::to_radians(8.0))
     .velocity(0.09)
-    .duration(Duration::from_millis(15));
+    .duration(Duration::from_millis(15));*/
 
 extern crate alloc;
 
-mod gps;
+mod auton;
 mod mechanisms;
 mod teams;
 
@@ -46,8 +36,9 @@ pub const MAX_AUTO: f64 = Motor::V5_MAX_VOLTAGE * 0.4;
 
 pub const INCH_TO_METER: f64 = 0.0254;
 pub const BALL_DIAMETER: f64 = 3.25 * INCH_TO_METER;
-pub const WHEEL_DIAMETER: f64 = 4. * INCH_TO_METER;
-// const TRACK_WIDTH: f64 = 14. * INCH_TO_METER;
+
+pub const WHEEL_DIAMETER: f64 = 4.;
+const TRACK_WIDTH: f64 = 14.;
 
 // To rotate the body of the robot N degrees, spin the left/right wheels by ROBOT_TO_WHEEL_ROT * N,
 // and the opposite side by -ROBOT_TO_WHEEL_ROT * N degrees. Swap which wheels get the negative to
@@ -61,7 +52,7 @@ pub struct Robot {
     intake: Intake,
     router: Router,
 
-    drivetrain: Drivetrain<Mecanum, GpsTracking>,
+    drivetrain: Mecanum, // Drivetrain<Mecanum, GpsWheeledTracking>,
 }
 
 impl Robot {
@@ -70,34 +61,19 @@ impl Robot {
             return;
         }
 
-        let dt = &mut self.drivetrain;
+        for frame in FRAMES {
+            self.drivetrain
+                .drive_vector(
+                    Vec2 {
+                        x: frame.x,
+                        y: frame.y,
+                    },
+                    frame.r,
+                )
+                .ok();
 
-        let mut basic = Basic {
-            linear_controller: LINEAR_PID,
-            angular_controller: ANGULAR_PID,
-            linear_tolerances: LINEAR_TOLERANCES,
-            angular_tolerances: ANGULAR_TOLERANCES,
-            timeout: Some(Duration::from_secs(10)),
-        };
-
-        self.intake.forward().ok();
-        basic.drive_distance(dt, 13. * BALL_DIAMETER).await; // TODO: Adjust
-        self.intake.disable().ok();
-
-        let tube_rot = Angle::from_degrees(match alliance {
-            Alliance::Red => 45.,
-            Alliance::Blue => 225.,
-        });
-
-        basic
-            .drive_distance_at_heading(dt, 4. * BALL_DIAMETER, tube_rot)
-            .await;
-
-        self.intake.reverse().ok();
-        sleep(Duration::from_secs(3)).await;
-        self.intake.disable().ok();
-
-        basic.drive_distance(dt, -4. * BALL_DIAMETER).await;
+            sleep(Controller::UPDATE_INTERVAL).await;
+        }
     }
 
     async fn route_red_left(&mut self) {
@@ -131,20 +107,9 @@ impl SelectCompete for Robot {
             // Rotation
             let rx = controller_state.left_stick.x();
 
-            self.drivetrain
-                .model
-                .drive_vector(Vec2 { x: lx, y: ly }, rx)
-                .ok();
+            // println!("[{:?}] {lx}\t{ly}\t{rx}", Instant::now());
 
-            /*let v_fl = ly - lx + rx;
-            let v_fr = ly + lx - rx;
-            let v_bl = ly + lx + rx;
-            let v_br = ly - lx - rx;
-
-            self.left_front.set_voltage(v_fl * MAX_WHEEL).ok();
-            self.left_back.set_voltage(v_bl * MAX_WHEEL).ok();
-            self.right_front.set_voltage(v_fr * MAX_WHEEL).ok();
-            self.right_back.set_voltage(v_br * MAX_WHEEL).ok();*/
+            self.drivetrain.drive_vector(Vec2 { x: lx, y: ly }, rx).ok();
 
             let int_fw = controller_state.button_r1.is_pressed();
             let int_bw = controller_state.button_l1.is_pressed();
@@ -153,6 +118,7 @@ impl SelectCompete for Robot {
             let rou_bw = controller_state.button_l2.is_pressed();
 
             if int_fw && !int_bw {
+                println!("IntakeActivate");
                 self.intake.forward().ok();
             } else if int_bw && !int_fw {
                 self.intake.reverse().ok();
@@ -167,8 +133,6 @@ impl SelectCompete for Robot {
             } else {
                 self.router.disable().ok();
             }
-
-            self.drivetrain.tracking.integrate_acceleration();
 
             sleep(Controller::UPDATE_INTERVAL).await;
         }
@@ -191,22 +155,37 @@ async fn main(peripherals: Peripherals) {
     // Decides which hole the balls go out
     let router = Motor::new(peripherals.port_4, Gearset::Green, Direction::Forward);
 
-    let gps = GpsSensor::new(
+    /*let gps = GpsSensor::new(
         peripherals.port_19,
         Point2 { x: 0., y: -0.08 },
         Point2 { x: 1.41, y: -0.7 },
         270.,
-    );
+    );*/
 
-    let drivetrain = Drivetrain::new(
-        Mecanum {
-            front_left_motors: shared_motors![left_front],
-            back_left_motors: shared_motors![left_back],
-            front_right_motors: shared_motors![right_front],
-            back_right_motors: shared_motors![right_back],
-        },
-        GpsTracking::new(gps),
-    );
+    let front_left_motors = shared_motors![left_front];
+    let back_left_motors = shared_motors![left_back];
+    let front_right_motors = shared_motors![right_front];
+    let back_right_motors = shared_motors![right_back];
+
+    let drivetrain = Mecanum {
+        front_left_motors: front_left_motors.clone(),
+        back_left_motors: back_left_motors.clone(),
+        front_right_motors: front_right_motors.clone(),
+        back_right_motors: back_right_motors.clone(),
+    };
+
+    /*let drivetrain = Drivetrain::new(
+        drivetrain,
+        GpsWheeledTracking::new(
+            gps,
+            [
+                TrackingWheel::new(front_left_motors, WHEEL_DIAMETER, -TRACK_WIDTH, None),
+                TrackingWheel::new(back_left_motors, WHEEL_DIAMETER, -TRACK_WIDTH, None),
+                TrackingWheel::new(front_right_motors, WHEEL_DIAMETER, TRACK_WIDTH, None),
+                TrackingWheel::new(back_right_motors, WHEEL_DIAMETER, TRACK_WIDTH, None),
+            ],
+        ),
+    );*/
 
     let robot = Robot {
         controller,
@@ -214,21 +193,16 @@ async fn main(peripherals: Peripherals) {
         intake: Intake { intake, outtake },
         router: Router { router },
 
-        // gps,
         drivetrain,
-        /*left_front,
-        left_back,
-        right_front,
-        right_back,*/
     };
 
     robot
         .compete(SimpleSelect::new(
             peripherals.display,
             [
-                route!("Red, Left (NON-FUNCTIONAL)", Robot::route_red_left),
+                // route!("Red, Left (NON-FUNCTIONAL)", Robot::route_red_left),
                 route!("Red, Right", Robot::route_red_right),
-                route!("Blue, Left (NON-FUNCTIONAL)", Robot::route_blue_left),
+                // route!("Blue, Left (NON-FUNCTIONAL)", Robot::route_blue_left),
                 route!("Blue, Right", Robot::route_blue_right),
             ],
         ))

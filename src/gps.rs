@@ -1,11 +1,16 @@
-use evian::prelude::*;
+use alloc::rc::Rc;
+use core::cell::RefCell;
+
+use evian::{prelude::*, tracking::RotarySensor};
 use vexide::{
     devices::{
         math::{Point2, Vector3},
         smart::GpsSensor,
     },
     float::Float,
-    time::Instant,
+    prelude::{Motor, SmartDevice},
+    task::{Task, spawn},
+    time::{Instant, sleep},
 };
 
 const VEC3_ZEROS: Vector3<f64> = Vector3 {
@@ -14,73 +19,121 @@ const VEC3_ZEROS: Vector3<f64> = Vector3 {
     z: 0.0,
 };
 
-pub struct GpsTracking {
-    gps: GpsSensor,
-    velocity: Vector3<f64>,
-    last_update: Option<Instant>,
+#[derive(Default, Debug, Clone, Copy, PartialEq)]
+pub(crate) struct TrackingData {
+    position: Vec2<f64>,
+    heading: Angle,
+    forward_travel: f64,
+    linear_velocity: f64,
+    angular_velocity: f64,
 }
 
-impl GpsTracking {
-    pub fn new(gps: GpsSensor) -> Self {
-        Self {
-            gps,
-            velocity: VEC3_ZEROS,
-            last_update: None,
-        }
-    }
+pub struct GpsWheeledTracking {
+    data: Rc<RefCell<TrackingData>>,
+    _task: Task<()>,
+}
 
-    pub fn integrate_acceleration(&mut self) {
-        let accel = self.gps.acceleration().unwrap_or(VEC3_ZEROS);
+impl GpsWheeledTracking {
+    pub fn new<T: RotarySensor + 'static, const N_FORWARD: usize>(
+        gps: GpsSensor,
+        forward_wheels: [TrackingWheel<T>; N_FORWARD],
+    ) -> Self {
+        let p_position = gps.position().unwrap_or(Point2 { x: 0., y: 0. });
+        let p_heading = gps.heading().map_or(Angle::default(), Angle::from_degrees);
 
-        let now = Instant::now();
+        let data = Rc::new(RefCell::new(TrackingData {
+            position: p_position.into(),
+            heading: p_heading,
+            ..Default::default()
+        }));
 
-        if let Some(prev) = self.last_update {
-            let dt = now.duration_since(prev).as_secs_f64();
+        let c_data = data.clone();
 
-            self.velocity.x += accel.x * dt;
-            self.velocity.y += accel.y * dt;
-            self.velocity.z += accel.z * dt;
-        }
+        let task = spawn(async move {
+            let mut p_position = p_position;
+            let mut p_time = Instant::now();
 
-        self.last_update = Some(now);
+            loop {
+                sleep(Motor::WRITE_INTERVAL.max(GpsSensor::UPDATE_INTERVAL)).await;
+
+                let time = Instant::now();
+                let dt = time.duration_since(p_time).as_secs_f64().max(1e-9);
+
+                let travel: [f64; N_FORWARD] =
+                    core::array::from_fn(|i| forward_wheels[i].travel().unwrap_or_default());
+
+                // compute average total travel across available wheels (WheeledTracking does this)
+                let mut travel_sum = 0.0;
+                let mut travel_count = 0usize;
+
+                for t in travel {
+                    travel_sum += t;
+                    travel_count += 1;
+                }
+
+                let avg_total_travel = if travel_count != 0 {
+                    travel_sum / (travel_count as f64)
+                } else {
+                    0.0
+                };
+
+                let position = gps.position().unwrap_or(Point2 { x: 0., y: 0. });
+                let heading = Angle::from_degrees(gps.heading().unwrap_or_default());
+
+                // compute gps-based linear velocity if possible
+                let dx = position.x - p_position.x;
+                let dy = position.y - p_position.y;
+
+                let gps_linear_vel = (dx * dx + dy * dy).sqrt() / dt;
+
+                // write authoritative GPS pose/heading/vel, and wheel-derived forward_travel
+                {
+                    let mut d = c_data.borrow_mut();
+                    d.forward_travel = avg_total_travel;
+                    d.position = position.into();
+                    d.heading = heading;
+                    d.linear_velocity = gps_linear_vel;
+                    d.angular_velocity = gps.gyro_rate().map(|rate| rate.z).unwrap_or_default();
+                }
+
+                // update prev snapshots & time
+                p_position = position;
+                p_time = time;
+            }
+        });
+
+        Self { data, _task: task }
     }
 }
 
 use evian::tracking::Tracking;
 
-impl Tracking for GpsTracking {}
+impl Tracking for GpsWheeledTracking {}
 
-impl TracksPosition for GpsTracking {
+impl TracksPosition for GpsWheeledTracking {
     fn position(&self) -> Vec2<f64> {
-        let pos = self.gps.position().unwrap_or(Point2 { x: 0., y: 0. });
-
-        Vec2::new(pos.x, pos.y)
+        self.data.borrow().position
     }
 }
 
-impl TracksHeading for GpsTracking {
+impl TracksHeading for GpsWheeledTracking {
     fn heading(&self) -> Angle {
-        let heading = self.gps.heading().unwrap_or(0.);
-
-        Angle::from_degrees(heading)
+        self.data.borrow().heading
     }
 }
 
-impl TracksVelocity for GpsTracking {
+impl TracksVelocity for GpsWheeledTracking {
     fn linear_velocity(&self) -> f64 {
-        (self.velocity.x * self.velocity.x
-            + self.velocity.y * self.velocity.y
-            + self.velocity.z * self.velocity.z)
-            .sqrt()
+        self.data.borrow().linear_velocity
     }
 
     fn angular_velocity(&self) -> f64 {
-        self.gps.gyro_rate().map(|rate| rate.z).unwrap_or_default()
+        self.data.borrow().angular_velocity
     }
 }
 
-impl TracksForwardTravel for GpsTracking {
+impl TracksForwardTravel for GpsWheeledTracking {
     fn forward_travel(&self) -> f64 {
-        0.
+        self.data.borrow().forward_travel
     }
 }

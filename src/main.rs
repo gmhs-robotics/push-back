@@ -9,7 +9,12 @@ use autons::{
     route,
     simple::SimpleSelect,
 };
-use evian::{drivetrain::model::Mecanum, prelude::*};
+use evian::{
+    control::loops::{AngularPid, Pid},
+    drivetrain::model::Mecanum,
+    motion::Basic,
+    prelude::*,
+};
 use vexide::{
     devices::{math::Point2, smart::GpsSensor},
     prelude::*,
@@ -17,7 +22,7 @@ use vexide::{
 
 use crate::{auton::FRAMES, gps::GpsWheeledTracking, mechanisms::ControlledMotorGroup, teams::*};
 
-/*const LINEAR_PID: Pid = Pid::new(1.0, 0.0, 0.125, None);
+const LINEAR_PID: Pid = Pid::new(1.0, 0.0, 0.125, None);
 const ANGULAR_PID: AngularPid = AngularPid::new(16.0, 0.0, 1.0, None);
 const LINEAR_TOLERANCES: Tolerances = Tolerances::new()
     .error(4.0)
@@ -26,7 +31,7 @@ const LINEAR_TOLERANCES: Tolerances = Tolerances::new()
 const ANGULAR_TOLERANCES: Tolerances = Tolerances::new()
     .error(f64::to_radians(8.0))
     .velocity(0.09)
-    .duration(Duration::from_millis(15));*/
+    .duration(Duration::from_millis(15));
 
 extern crate alloc;
 
@@ -61,6 +66,18 @@ impl Robot {
         if side == Side::Left {
             return;
         }
+
+        let dt = &mut self.drivetrain;
+
+        let mut basic = Basic {
+            linear_controller: LINEAR_PID,
+            angular_controller: ANGULAR_PID,
+            linear_tolerances: LINEAR_TOLERANCES,
+            angular_tolerances: ANGULAR_TOLERANCES,
+            timeout: Some(Duration::from_secs(10)),
+        };
+
+        basic.turn_to_heading(dt, Angle::from_degrees(100.)).await;
 
         for frame in FRAMES {
             match frame {

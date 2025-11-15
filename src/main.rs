@@ -1,19 +1,21 @@
 #![no_main]
 #![no_std]
 
+use alloc::rc::Rc;
+use core::{cell::RefCell, time::Duration};
+
 use autons::{
     prelude::{SelectCompete, SelectCompeteExt},
     route,
     simple::SimpleSelect,
 };
 use evian::{drivetrain::model::Mecanum, prelude::*};
-use vexide::prelude::*;
-
-use crate::{
-    auton::FRAMES,
-    mechanisms::{Intake, Router},
-    teams::*,
+use vexide::{
+    devices::{math::Point2, smart::GpsSensor},
+    prelude::*,
 };
+
+use crate::{auton::FRAMES, gps::GpsWheeledTracking, mechanisms::ControlledMotorGroup, teams::*};
 
 /*const LINEAR_PID: Pid = Pid::new(1.0, 0.0, 0.125, None);
 const ANGULAR_PID: AngularPid = AngularPid::new(16.0, 0.0, 1.0, None);
@@ -29,16 +31,15 @@ const ANGULAR_TOLERANCES: Tolerances = Tolerances::new()
 extern crate alloc;
 
 mod auton;
+mod gps;
 mod mechanisms;
 mod teams;
 
-pub const MAX_AUTO: f64 = Motor::V5_MAX_VOLTAGE * 0.4;
-
 pub const INCH_TO_METER: f64 = 0.0254;
-pub const BALL_DIAMETER: f64 = 3.25 * INCH_TO_METER;
 
-pub const WHEEL_DIAMETER: f64 = 4.;
-const TRACK_WIDTH: f64 = 14.;
+pub const BALL_DIAMETER: f64 = 3.25 * INCH_TO_METER;
+pub const WHEEL_DIAMETER: f64 = 4. * INCH_TO_METER;
+pub const TRACK_WIDTH: f64 = 14. * INCH_TO_METER;
 
 // To rotate the body of the robot N degrees, spin the left/right wheels by ROBOT_TO_WHEEL_ROT * N,
 // and the opposite side by -ROBOT_TO_WHEEL_ROT * N degrees. Swap which wheels get the negative to
@@ -49,10 +50,10 @@ const TRACK_WIDTH: f64 = 14.;
 pub struct Robot {
     controller: Controller,
 
-    intake: Intake,
-    router: Router,
+    intake: ControlledMotorGroup<2>,
+    router: ControlledMotorGroup<1>,
 
-    drivetrain: Mecanum, // Drivetrain<Mecanum, GpsWheeledTracking>,
+    drivetrain: Drivetrain<Mecanum, GpsWheeledTracking<Rc<RefCell<[Motor; 1]>>, 4>>,
 }
 
 impl Robot {
@@ -62,17 +63,23 @@ impl Robot {
         }
 
         for frame in FRAMES {
-            self.drivetrain
-                .drive_vector(
-                    Vec2 {
-                        x: frame.x,
-                        y: frame.y,
-                    },
-                    frame.r,
-                )
-                .ok();
-
-            sleep(Controller::UPDATE_INTERVAL).await;
+            match frame {
+                auton::Event::Input { x, y, r } => {
+                    self.drivetrain.model.drive_vector(Vec2 { x, y }, r).ok();
+                }
+                auton::Event::Wait(micros) => {
+                    sleep(Duration::from_micros(micros)).await;
+                }
+                auton::Event::IntakeFwd => {
+                    self.intake.forward().ok();
+                }
+                auton::Event::IntakeRev => {
+                    self.intake.reverse().ok();
+                }
+                auton::Event::IntakeDisable => {
+                    self.intake.disable().ok();
+                }
+            }
         }
     }
 
@@ -109,7 +116,10 @@ impl SelectCompete for Robot {
 
             // println!("[{:?}] {lx}\t{ly}\t{rx}", Instant::now());
 
-            self.drivetrain.drive_vector(Vec2 { x: lx, y: ly }, rx).ok();
+            self.drivetrain
+                .model
+                .drive_vector(Vec2 { x: lx, y: ly }, rx)
+                .ok();
 
             let int_fw = controller_state.button_r1.is_pressed();
             let int_bw = controller_state.button_l1.is_pressed();
@@ -117,22 +127,8 @@ impl SelectCompete for Robot {
             let rou_fw = controller_state.button_r2.is_pressed();
             let rou_bw = controller_state.button_l2.is_pressed();
 
-            if int_fw && !int_bw {
-                println!("IntakeActivate");
-                self.intake.forward().ok();
-            } else if int_bw && !int_fw {
-                self.intake.reverse().ok();
-            } else {
-                self.intake.disable().ok();
-            }
-
-            if rou_fw && !rou_bw {
-                self.router.forward().ok();
-            } else if rou_bw && !rou_fw {
-                self.router.reverse().ok();
-            } else {
-                self.router.disable().ok();
-            }
+            self.intake.drive_by_buttons(int_fw, int_bw).ok();
+            self.router.drive_by_buttons(rou_fw, rou_bw).ok();
 
             sleep(Controller::UPDATE_INTERVAL).await;
         }
@@ -155,12 +151,12 @@ async fn main(peripherals: Peripherals) {
     // Decides which hole the balls go out
     let router = Motor::new(peripherals.port_4, Gearset::Green, Direction::Forward);
 
-    /*let gps = GpsSensor::new(
+    let gps = GpsSensor::new(
         peripherals.port_19,
         Point2 { x: 0., y: -0.08 },
         Point2 { x: 1.41, y: -0.7 },
         270.,
-    );*/
+    );
 
     let front_left_motors = shared_motors![left_front];
     let back_left_motors = shared_motors![left_back];
@@ -174,24 +170,24 @@ async fn main(peripherals: Peripherals) {
         back_right_motors: back_right_motors.clone(),
     };
 
-    /*let drivetrain = Drivetrain::new(
+    let drivetrain = Drivetrain::new(
         drivetrain,
         GpsWheeledTracking::new(
             gps,
             [
-                TrackingWheel::new(front_left_motors, WHEEL_DIAMETER, -TRACK_WIDTH, None),
-                TrackingWheel::new(back_left_motors, WHEEL_DIAMETER, -TRACK_WIDTH, None),
-                TrackingWheel::new(front_right_motors, WHEEL_DIAMETER, TRACK_WIDTH, None),
-                TrackingWheel::new(back_right_motors, WHEEL_DIAMETER, TRACK_WIDTH, None),
+                TrackingWheel::new(front_left_motors, WHEEL_DIAMETER, -TRACK_WIDTH / 2., None),
+                TrackingWheel::new(back_left_motors, WHEEL_DIAMETER, -TRACK_WIDTH / 2., None),
+                TrackingWheel::new(front_right_motors, WHEEL_DIAMETER, TRACK_WIDTH / 2., None),
+                TrackingWheel::new(back_right_motors, WHEEL_DIAMETER, TRACK_WIDTH / 2., None),
             ],
         ),
-    );*/
+    );
 
     let robot = Robot {
         controller,
 
-        intake: Intake { intake, outtake },
-        router: Router { router },
+        intake: ControlledMotorGroup::new(Motor::V5_MAX_VOLTAGE, [intake, outtake]),
+        router: ControlledMotorGroup::new(Motor::V5_MAX_VOLTAGE, [router]),
 
         drivetrain,
     };
@@ -201,9 +197,9 @@ async fn main(peripherals: Peripherals) {
             peripherals.display,
             [
                 // route!("Red, Left (NON-FUNCTIONAL)", Robot::route_red_left),
-                route!("Red, Right", Robot::route_red_right),
+                route!("Red (Right)", Robot::route_red_right),
                 // route!("Blue, Left (NON-FUNCTIONAL)", Robot::route_blue_left),
-                route!("Blue, Right", Robot::route_blue_right),
+                route!("Blue (Right)", Robot::route_blue_right),
             ],
         ))
         .await;

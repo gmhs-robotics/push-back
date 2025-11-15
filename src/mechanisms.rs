@@ -1,53 +1,45 @@
 use vexide::{devices::smart::motor::MotorError, prelude::*};
 
-pub struct Intake {
-    pub intake: Motor,
-    pub outtake: Motor,
+pub struct ControlledMotorGroup<const N: usize> {
+    target_voltage: f64,
+    motors: [Motor; N],
 }
 
-impl Intake {
-    pub fn forward(&mut self) -> Result<(), MotorError> {
-        self.intake.set_voltage(Motor::V5_MAX_VOLTAGE)?;
-        self.outtake.set_voltage(Motor::V5_MAX_VOLTAGE)?;
+impl<const N: usize> ControlledMotorGroup<N> {
+    pub fn new(target_voltage: f64, motors: [Motor; N]) -> Self {
+        Self {
+            target_voltage,
+            motors,
+        }
+    }
+
+    pub fn set_voltage(&mut self, voltage: f64) -> Result<(), MotorError> {
+        for motor in &mut self.motors {
+            motor.set_voltage(voltage)?;
+        }
 
         Ok(())
+    }
+
+    pub fn forward(&mut self) -> Result<(), MotorError> {
+        self.set_voltage(self.target_voltage)
     }
 
     pub fn reverse(&mut self) -> Result<(), MotorError> {
-        self.intake.set_voltage(-Motor::V5_MAX_VOLTAGE)?;
-        self.outtake.set_voltage(-Motor::V5_MAX_VOLTAGE)?;
-
-        Ok(())
+        self.set_voltage(-self.target_voltage)
     }
 
     pub fn disable(&mut self) -> Result<(), MotorError> {
-        self.intake.set_voltage(0.)?;
-        self.outtake.set_voltage(0.)?;
-
-        Ok(())
-    }
-}
-
-pub struct Router {
-    pub router: Motor,
-}
-
-impl Router {
-    pub fn forward(&mut self) -> Result<(), MotorError> {
-        self.router.set_voltage(Motor::V5_MAX_VOLTAGE)?;
-
-        Ok(())
+        self.set_voltage(0.)
     }
 
-    pub fn reverse(&mut self) -> Result<(), MotorError> {
-        self.router.set_voltage(-Motor::V5_MAX_VOLTAGE)?;
-
-        Ok(())
-    }
-
-    pub fn disable(&mut self) -> Result<(), MotorError> {
-        self.router.set_voltage(0.)?;
-
-        Ok(())
+    pub fn drive_by_buttons(&mut self, forward: bool, reverse: bool) -> Result<(), MotorError> {
+        if forward && !reverse {
+            self.forward()
+        } else if reverse && !forward {
+            self.reverse()
+        } else {
+            self.disable()
+        }
     }
 }

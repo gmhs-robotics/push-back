@@ -20,7 +20,12 @@ use vexide::{
     prelude::*,
 };
 
-use crate::{auton::FRAMES, gps::GpsWheeledTracking, mechanisms::ControlledMotorGroup, teams::*};
+use crate::{
+    auton::FRAMES,
+    gps::{GpsGyro, GpsWheeledTracking},
+    mechanisms::ControlledMotorGroup,
+    teams::*,
+};
 
 const LINEAR_PID: Pid = Pid::new(1.0, 0.0, 0.125, None);
 const ANGULAR_PID: AngularPid = AngularPid::new(16.0, 0.0, 1.0, None);
@@ -58,7 +63,7 @@ pub struct Robot {
     intake: ControlledMotorGroup<2>,
     router: ControlledMotorGroup<1>,
 
-    drivetrain: Drivetrain<Mecanum, GpsWheeledTracking<Rc<RefCell<[Motor; 1]>>, 4>>,
+    drivetrain: Drivetrain<Mecanum, WheeledTracking>,
 }
 
 impl Robot {
@@ -66,18 +71,6 @@ impl Robot {
         if side == Side::Left {
             return;
         }
-
-        let dt = &mut self.drivetrain;
-
-        let mut basic = Basic {
-            linear_controller: LINEAR_PID,
-            angular_controller: ANGULAR_PID,
-            linear_tolerances: LINEAR_TOLERANCES,
-            angular_tolerances: ANGULAR_TOLERANCES,
-            timeout: Some(Duration::from_secs(10)),
-        };
-
-        basic.turn_to_heading(dt, Angle::from_degrees(100.)).await;
 
         for frame in FRAMES {
             match frame {
@@ -100,20 +93,49 @@ impl Robot {
         }
     }
 
-    async fn route_red_left(&mut self) {
-        self.autonomous(Alliance::Red, Side::Left).await
+    async fn route_mega_red(&mut self) {
+        self.route_mega(Alliance::Red, Side::Right).await
     }
 
-    async fn route_red_right(&mut self) {
+    async fn route_mega_blue(&mut self) {
+        self.route_mega(Alliance::Blue, Side::Right).await
+    }
+
+    async fn route_norm_blue(&mut self) {
+        self.autonomous(Alliance::Blue, Side::Right).await
+    }
+
+    async fn route_norm_red(&mut self) {
         self.autonomous(Alliance::Red, Side::Right).await
     }
 
-    async fn route_blue_left(&mut self) {
-        self.autonomous(Alliance::Blue, Side::Left).await
-    }
+    async fn route_none(&mut self) {}
 
-    async fn route_blue_right(&mut self) {
-        self.autonomous(Alliance::Blue, Side::Right).await
+    async fn route_mega(&mut self, alliance: Alliance, side: Side) {
+        let dt = &mut self.drivetrain;
+
+        let mut basic = Basic {
+            linear_controller: LINEAR_PID,
+            angular_controller: ANGULAR_PID,
+            linear_tolerances: LINEAR_TOLERANCES,
+            angular_tolerances: ANGULAR_TOLERANCES,
+            timeout: Some(Duration::from_secs(10)),
+        };
+
+        basic.drive_distance(dt, 13. * BALL_DIAMETER).await;
+
+        let tube_rot = Angle::from_degrees(match alliance {
+            Alliance::Red => 45.,
+            Alliance::Blue => 225.,
+        });
+
+        basic
+            .drive_distance_at_heading(dt, 4. * BALL_DIAMETER, tube_rot)
+            .await;
+
+        self.intake.forward();
+        sleep(Duration::from_secs(3)).await;
+        self.intake.disable();
     }
 }
 
@@ -189,14 +211,16 @@ async fn main(peripherals: Peripherals) {
 
     let drivetrain = Drivetrain::new(
         drivetrain,
-        GpsWheeledTracking::new(
-            gps,
+        WheeledTracking::forward_only(
+            Vec2::new(0., 0.),
+            Angle::from_degrees(270.),
             [
                 TrackingWheel::new(front_left_motors, WHEEL_DIAMETER, -TRACK_WIDTH / 2., None),
                 TrackingWheel::new(back_left_motors, WHEEL_DIAMETER, -TRACK_WIDTH / 2., None),
                 TrackingWheel::new(front_right_motors, WHEEL_DIAMETER, TRACK_WIDTH / 2., None),
                 TrackingWheel::new(back_right_motors, WHEEL_DIAMETER, TRACK_WIDTH / 2., None),
             ],
+            Some(GpsGyro(gps)),
         ),
     );
 
@@ -214,9 +238,12 @@ async fn main(peripherals: Peripherals) {
             peripherals.display,
             [
                 // route!("Red, Left (NON-FUNCTIONAL)", Robot::route_red_left),
-                route!("Red (Right)", Robot::route_red_right),
+                route!("Red (Right) NORMAL", Robot::route_norm_red),
                 // route!("Blue, Left (NON-FUNCTIONAL)", Robot::route_blue_left),
-                route!("Blue (Right)", Robot::route_blue_right),
+                route!("Blue (Right) NORMAL", Robot::route_norm_blue),
+                route!("Red MEGANUT", Robot::route_mega_red),
+                route!("Blue MEGANUT", Robot::route_mega_blue),
+                route!("Disable", Robot::route_none),
             ],
         ))
         .await;

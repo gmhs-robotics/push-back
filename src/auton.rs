@@ -9,13 +9,14 @@ pub enum Event {
     IntakeDisable,
 }
 
-pub static FRAMES: [Event; 1501] = [
+pub static FRAMES: [Event; 1502] = [
     Event::Input {
         x: 0.,
         y: 0.047244094488188976,
         r: 0.,
     },
-    Event::Wait(27979),
+    Event::Wait(2979),
+    //Event::Wait(27979),
     Event::Input {
         x: 0.,
         y: 0.15748031496062992,
@@ -39,7 +40,7 @@ pub static FRAMES: [Event; 1501] = [
         y: 0.2992125984251969,
         r: 0.,
     },
-    Event::Wait(28019),
+    Event::Wait(30019), // 28019
     Event::Input {
         x: 0.,
         y: 0.29133858267716534,
@@ -940,7 +941,7 @@ pub static FRAMES: [Event; 1501] = [
     Event::Wait(27976),
     Event::Input {
         x: 0.,
-        y: 0.15748031496062992,
+        y: 1.15748031496062992,
         r: 0.,
     },
     Event::Wait(28004),
@@ -2303,6 +2304,7 @@ pub static FRAMES: [Event; 1501] = [
         y: 0.14960629921259844,
         r: 0.,
     },
+    Event::IntakeRev,
     Event::Wait(27998),
     Event::Input {
         x: 0.,

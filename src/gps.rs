@@ -3,10 +3,10 @@ use core::cell::RefCell;
 
 use evian::{
     prelude::*,
-    tracking::{RotarySensor, Tracking},
+    tracking::{Gyro, RotarySensor, Tracking},
 };
 use vexide::{
-    devices::{math::Point2, smart::GpsSensor},
+    devices::{PortError, math::Point2, smart::GpsSensor},
     prelude::SmartDevice,
     task::{Task, spawn},
     time::{Instant, sleep},
@@ -130,8 +130,7 @@ impl<T: RotarySensor + 'static, const N: usize> TracksForwardTravel for GpsWheel
     }
 }
 
-/*
-pub struct GpsGyro(GpsSensor);
+pub struct GpsGyro(pub GpsSensor);
 
 impl Gyro for GpsGyro {
     type Error = PortError;
@@ -143,4 +142,4 @@ impl Gyro for GpsGyro {
     fn angular_velocity(&self) -> Result<f64, Self::Error> {
         Ok(self.0.gyro_rate().map(|rate| rate.z)?.to_radians())
     }
-}*/
+}

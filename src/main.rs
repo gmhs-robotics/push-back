@@ -43,8 +43,8 @@ impl SelectCompete for Robot {
             let t = controller_state.right_stick.y();
             let r = controller_state.left_stick.x();
 
-            self.left.set_voltage((t - r) * MAX_WHEEL).ok();
-            self.right.set_voltage((t + r) * MAX_WHEEL).ok();
+            self.left.set_voltage((t + r) * MAX_WHEEL).ok();
+            self.right.set_voltage((t - r) * MAX_WHEEL).ok();
 
             let intake_forward = controller_state.button_r2.is_pressed();
             let intake_reverse = controller_state.button_l2.is_pressed();

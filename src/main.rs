@@ -41,7 +41,7 @@ impl SelectCompete for Robot {
             let controller_state = self.controller.state().unwrap_or_default();
 
             let t = controller_state.left_stick.y();
-            let r = controller_state.right_stick.y();
+            let r = controller_state.right_stick.x();
 
             self.left.set_voltage((t - r) * MAX_WHEEL).ok();
             self.right.set_voltage((t + r) * MAX_WHEEL).ok();

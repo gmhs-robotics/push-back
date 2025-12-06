@@ -40,20 +40,20 @@ impl SelectCompete for Robot {
         loop {
             let controller_state = self.controller.state().unwrap_or_default();
 
-            let ly = controller_state.left_stick.y();
-            let ry = controller_state.right_stick.y();
+            let t = controller_state.left_stick.y();
+            let r = controller_state.right_stick.y();
 
-            self.left.set_voltage(ly * MAX_WHEEL).ok();
-            self.right.set_voltage(ry * MAX_WHEEL).ok();
+            self.left.set_voltage((t - r) * MAX_WHEEL).ok();
+            self.right.set_voltage((t + r) * MAX_WHEEL).ok();
 
-            let intake_forward = controller_state.button_r1.is_pressed();
-            let intake_reverse = controller_state.button_l1.is_pressed();
+            let intake_forward = controller_state.button_r2.is_pressed();
+            let intake_reverse = controller_state.button_l2.is_pressed();
 
             self.intake
                 .update_from_button_state(intake_forward, intake_reverse)
                 .ok();
 
-            let outake_forward = controller_state.button_r2.is_pressed();
+            let outake_forward = controller_state.button_r1.is_pressed();
 
             if outake_forward {
                 self.outtake.forward().ok();
@@ -61,7 +61,7 @@ impl SelectCompete for Robot {
                 self.outtake.disable().ok();
             }
 
-            let toggle_piston = controller_state.button_l2.is_now_pressed();
+            let toggle_piston = controller_state.button_l1.is_now_pressed();
 
             if toggle_piston {
                 if self.piston.is_high().unwrap_or_default() {
@@ -80,15 +80,15 @@ impl SelectCompete for Robot {
 async fn main(peripherals: Peripherals) {
     let controller = peripherals.primary_controller;
 
-    let left = Motor::new(peripherals.port_10, Gearset::Green, Direction::Forward);
-    let right = Motor::new(peripherals.port_9, Gearset::Green, Direction::Reverse);
+    let left = Motor::new(peripherals.port_18, Gearset::Green, Direction::Forward);
+    let right = Motor::new(peripherals.port_10, Gearset::Green, Direction::Reverse);
 
     let intake = BinaryMotor(
-        Motor::new(peripherals.port_1, Gearset::Green, Direction::Forward),
+        Motor::new(peripherals.port_19, Gearset::Green, Direction::Forward),
         MAX_MECH,
     );
     let outtake = BinaryMotor(
-        Motor::new(peripherals.port_2, Gearset::Green, Direction::Forward),
+        Motor::new(peripherals.port_21, Gearset::Green, Direction::Forward),
         MAX_MECH,
     );
 

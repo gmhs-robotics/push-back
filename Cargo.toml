@@ -3,9 +3,10 @@ name = "banana-leclerc"
 version = "0.1.0"
 edition = "2024"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[profile.release]
+opt-level = "z"
+lto = "fat"
 
-# These fields configure default behavior for uploads with `cargo v5`.
 [package.metadata.v5]
 upload-strategy = "differential"
 slot = 2
@@ -14,4 +15,4 @@ compress = true
 
 [dependencies]
 autons = "0.2.0"
-vexide = { version = "0.8.0", features = ["full", "vex-sdk-vexcode"] }
+vexide = { version = "0.8.0", features = ["full", "vex-sdk-vexcode", "vex-sdk-mock"] }

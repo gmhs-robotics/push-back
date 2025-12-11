@@ -13,5 +13,5 @@ icon = "cool-x"
 compress = true
 
 [dependencies]
-autons = "0.1.0"
-vexide = { version = "0.8.0", features = ["full", "default-sdk"] }
+autons = "0.2.0"
+vexide = { version = "0.8.0", features = ["full", "vex-sdk-vexcode"] }

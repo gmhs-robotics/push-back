@@ -19,7 +19,7 @@ impl BinaryMotor {
         &mut self,
         forward: bool,
         reverse: bool,
-    ) -> Result<(), MotorError> {
+    ) -> Result<(), PortError> {
         if forward && !reverse {
             self.forward()
         } else if reverse && !forward {

@@ -1,17 +1,17 @@
-use vexide::{devices::smart::motor::MotorError, prelude::*};
+use vexide::{prelude::*, smart::PortError};
 
 pub struct BinaryMotor(pub Motor, pub f64);
 
 impl BinaryMotor {
-    pub fn disable(&mut self) -> Result<(), MotorError> {
+    pub fn disable(&mut self) -> Result<(), PortError> {
         self.0.set_voltage(0.)
     }
 
-    pub fn forward(&mut self) -> Result<(), MotorError> {
+    pub fn forward(&mut self) -> Result<(), PortError> {
         self.0.set_voltage(self.1)
     }
 
-    pub fn reverse(&mut self) -> Result<(), MotorError> {
+    pub fn reverse(&mut self) -> Result<(), PortError> {
         self.0.set_voltage(-self.1)
     }
 

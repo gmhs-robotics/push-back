@@ -1,7 +1,3 @@
-use autons::{
-    prelude::*,
-    simple::{route, SimpleSelect},
-};
 use vexide::prelude::*;
 
 use crate::mechanisms::BinaryMotor;
@@ -14,8 +10,8 @@ pub const MAX_MECH: f64 = Motor::V5_MAX_VOLTAGE;
 struct Robot {
     controller: Controller,
 
-    left: Motor,
-    right: Motor,
+    left: [Motor; 2],
+    right: [Motor; 2],
 
     intake: BinaryMotor,
     outtake: BinaryMotor,
@@ -23,14 +19,7 @@ struct Robot {
     piston: AdiDigitalOut,
 }
 
-impl Robot {
-    async fn route_red_left(&mut self) {}
-    async fn route_red_right(&mut self) {}
-    async fn route_blue_left(&mut self) {}
-    async fn route_blue_right(&mut self) {}
-}
-
-impl SelectCompete for Robot {
+impl Compete for Robot {
     async fn driver(&mut self) {
         loop {
             let controller_state = self.controller.state().unwrap_or_default();
@@ -38,8 +27,13 @@ impl SelectCompete for Robot {
             let t = controller_state.right_stick.y();
             let r = controller_state.left_stick.x();
 
-            self.left.set_voltage((t + r) * MAX_WHEEL).ok();
-            self.right.set_voltage((t - r) * MAX_WHEEL).ok();
+            for motor in &mut self.left {
+                motor.set_voltage((t + r) * MAX_WHEEL).ok();
+            }
+
+            for motor in &mut self.right {
+                motor.set_voltage((t - r) * MAX_WHEEL).ok();
+            }
 
             let intake_forward = controller_state.button_r2.is_pressed();
             let intake_reverse = controller_state.button_l2.is_pressed();
@@ -49,12 +43,11 @@ impl SelectCompete for Robot {
                 .ok();
 
             let outake_forward = controller_state.button_r1.is_pressed();
+            let outake_reverse = controller_state.button_x.is_pressed();
 
-            if outake_forward {
-                self.outtake.forward().ok();
-            } else {
-                self.outtake.disable().ok();
-            }
+            self.outtake
+                .update_from_button_state(outake_forward, outake_reverse)
+                .ok();
 
             let toggle_piston = controller_state.button_l1.is_now_pressed();
 
@@ -75,8 +68,14 @@ impl SelectCompete for Robot {
 async fn main(peripherals: Peripherals) {
     let controller = peripherals.primary_controller;
 
-    let left = Motor::new(peripherals.port_18, Gearset::Green, Direction::Forward);
-    let right = Motor::new(peripherals.port_10, Gearset::Green, Direction::Reverse);
+    let left = [
+        Motor::new(peripherals.port_18, Gearset::Green, Direction::Forward),
+        Motor::new(peripherals.port_12, Gearset::Green, Direction::Forward),
+    ];
+    let right = [
+        Motor::new(peripherals.port_10, Gearset::Green, Direction::Reverse),
+        Motor::new(peripherals.port_9, Gearset::Green, Direction::Reverse),
+    ];
 
     let intake = BinaryMotor(
         Motor::new(peripherals.port_19, Gearset::Green, Direction::Forward),
@@ -100,15 +99,5 @@ async fn main(peripherals: Peripherals) {
         piston,
     };
 
-    robot
-        .compete(SimpleSelect::new(
-            peripherals.display,
-            [
-                route!("Red, Left", Robot::route_red_left),
-                route!("Red, Right", Robot::route_red_right),
-                route!("Blue, Left", Robot::route_blue_left),
-                route!("Blue, Right", Robot::route_blue_right),
-            ],
-        ))
-        .await;
+    robot.compete().await;
 }

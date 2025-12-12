@@ -8,7 +8,7 @@ opt-level = "z"
 lto = "fat"
 
 [package.metadata.v5]
-upload-strategy = "differential"
+upload-strategy = "monolith"
 slot = 2
 icon = "cool-x"
 compress = true

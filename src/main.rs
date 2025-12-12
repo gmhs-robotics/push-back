@@ -5,7 +5,6 @@ use crate::mechanisms::BinaryMotor;
 mod mechanisms;
 
 pub const MAX_WHEEL: f64 = Motor::V5_MAX_VOLTAGE;
-pub const MAX_MECH: f64 = Motor::V5_MAX_VOLTAGE;
 
 struct Robot {
     controller: Controller,
@@ -79,11 +78,11 @@ async fn main(peripherals: Peripherals) {
 
     let intake = BinaryMotor(
         Motor::new(peripherals.port_19, Gearset::Green, Direction::Forward),
-        MAX_MECH,
+        MAX_WHEEL,
     );
     let outtake = BinaryMotor(
         Motor::new(peripherals.port_21, Gearset::Green, Direction::Forward),
-        MAX_MECH,
+        MAX_WHEEL,
     );
 
     let piston = AdiDigitalOut::new(peripherals.adi_a);

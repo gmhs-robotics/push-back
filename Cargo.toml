@@ -13,6 +13,10 @@ slot = 2
 icon = "cool-x"
 compress = true
 
+[features]
+record = []
+
 [dependencies]
 autons = "0.2.0"
+bincode = { version = "2.0.1", default-features = false, features = ["alloc", "derive"] }
 vexide = { version = "0.8.0", features = ["full", "vex-sdk-vexcode", "vex-sdk-mock"] }

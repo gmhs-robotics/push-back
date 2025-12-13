@@ -1,8 +1,13 @@
+use std::time::{Duration, Instant};
+
+use autons::{prelude::*, route, simple::SimpleSelect};
+use bincode::config::{Configuration, LittleEndian, NoLimit, Varint};
 use vexide::prelude::*;
 
-use crate::mechanisms::BinaryMotor;
+use crate::{mechanisms::BinaryMotor, record::RecordedPath};
 
 mod mechanisms;
+mod record;
 
 pub const MAX_WHEEL: f64 = Motor::V5_MAX_VOLTAGE;
 
@@ -16,49 +21,135 @@ struct Robot {
     outtake: BinaryMotor,
 
     piston: AdiDigitalOut,
+
+    #[cfg(feature = "record")]
+    recording: RecordedPath,
 }
 
-impl Compete for Robot {
+impl SelectCompete for Robot {
     async fn driver(&mut self) {
+        #[cfg(feature = "record")]
+        let mut last_frame = Instant::now();
+
         loop {
+            #[cfg(feature = "record")]
+            let now = Instant::now();
+            #[cfg(feature = "record")]
+            let delay: Duration = now.duration_since(last_frame);
+            #[cfg(feature = "record")]
+            {
+                last_frame = now;
+            }
+
             let controller_state = self.controller.state().unwrap_or_default();
 
             let t = controller_state.right_stick.y();
             let r = controller_state.left_stick.x();
 
+            let left_volts = (t + r) * MAX_WHEEL;
+            let right_volts = (t - r) * MAX_WHEEL;
+
             for motor in &mut self.left {
-                motor.set_voltage((t + r) * MAX_WHEEL).ok();
+                motor.set_voltage(left_volts).ok();
             }
 
             for motor in &mut self.right {
-                motor.set_voltage((t - r) * MAX_WHEEL).ok();
+                motor.set_voltage(right_volts).ok();
             }
 
             let intake_forward = controller_state.button_r2.is_pressed();
             let intake_reverse = controller_state.button_l2.is_pressed();
 
-            self.intake
+            let intake_volts = self
+                .intake
                 .update_from_button_state(intake_forward, intake_reverse)
-                .ok();
+                .unwrap_or_default();
 
             let outake_forward = controller_state.button_r1.is_pressed();
             let outake_reverse = controller_state.button_x.is_pressed();
 
-            self.outtake
+            let outake_volts = self
+                .outtake
                 .update_from_button_state(outake_forward, outake_reverse)
-                .ok();
+                .unwrap_or_default();
 
             let toggle_piston = controller_state.button_l1.is_now_pressed();
 
+            let piston_state = self.piston.is_high().unwrap_or_default();
+
             if toggle_piston {
-                if self.piston.is_high().unwrap_or_default() {
-                    self.piston.set_low().ok();
+                if piston_state {
+                    let _ = self.piston.set_low();
                 } else {
-                    self.piston.set_high().ok();
+                    let _ = self.piston.set_high();
                 }
             }
 
+            #[cfg(feature = "record")]
+            {
+                use crate::record::Frame;
+
+                self.recording.frames.push(Frame {
+                    left: left_volts,
+                    right: right_volts,
+                    intake: intake_volts,
+                    outake: outake_volts,
+                    piston: if toggle_piston {
+                        !piston_state
+                    } else {
+                        piston_state
+                    },
+                    delay: delay.as_micros() as u64,
+                });
+            }
+
             sleep(Controller::UPDATE_INTERVAL).await;
+        }
+    }
+}
+
+const BINCODE_CONFIG: Configuration<LittleEndian, Varint, NoLimit> = bincode::config::standard();
+
+impl Robot {
+    #[cfg(feature = "record")]
+    async fn save_recording(&mut self) {
+        let route = bincode::encode_to_vec(&self.recording, BINCODE_CONFIG);
+
+        if let Ok(bytes) = route {
+            let _ = std::fs::write("left.route", bytes);
+        }
+    }
+
+    async fn route_none(&mut self) {}
+
+    async fn route_recorded_left(&mut self) {
+        let route = std::fs::read("left.route");
+
+        if let Ok(route) = route {
+            let route = bincode::decode_from_slice::<RecordedPath, _>(&route, BINCODE_CONFIG);
+
+            if let Ok((route, _bytes_read)) = route {
+                for frame in route.frames {
+                    for motor in &mut self.left {
+                        let _ = motor.set_voltage(frame.left);
+                    }
+
+                    for motor in &mut self.right {
+                        let _ = motor.set_voltage(frame.right);
+                    }
+
+                    let _ = self.intake.0.set_voltage(frame.intake);
+                    let _ = self.outtake.0.set_voltage(frame.outake);
+
+                    let _ = self.piston.set_level(if frame.piston {
+                        vexide::adi::digital::LogicLevel::High
+                    } else {
+                        vexide::adi::digital::LogicLevel::Low
+                    });
+
+                    sleep(Duration::from_micros(frame.delay)).await;
+                }
+            }
         }
     }
 }
@@ -96,7 +187,20 @@ async fn main(peripherals: Peripherals) {
         outtake,
 
         piston,
+
+        #[cfg(feature = "record")]
+        recording: RecordedPath { frames: vec![] },
     };
 
-    robot.compete().await;
+    robot
+        .compete(SimpleSelect::new(
+            peripherals.display,
+            [
+                route!("Disable", Robot::route_none),
+                route!("Left (recorded)", Robot::route_recorded_left),
+                #[cfg(feature = "record")]
+                route!("Save Recording", Robot::save_recording),
+            ],
+        ))
+        .await;
 }

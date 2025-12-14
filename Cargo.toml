@@ -1,5 +1,5 @@
 [package]
-name = "banana-leclerc"
+name = "record-code"
 version = "0.1.0"
 edition = "2024"
 
@@ -9,7 +9,7 @@ lto = "fat"
 
 [package.metadata.v5]
 upload-strategy = "monolith"
-slot = 2
+slot =2
 icon = "cool-x"
 compress = true
 

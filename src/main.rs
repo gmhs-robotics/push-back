@@ -111,24 +111,36 @@ impl SelectCompete for Robot {
 const BINCODE_CONFIG: Configuration<LittleEndian, Varint, NoLimit> = bincode::config::standard();
 
 impl Robot {
-    #[cfg(feature = "record")]
     async fn save_recording(&mut self) {
-        let route = bincode::encode_to_vec(&self.recording, BINCODE_CONFIG);
+        println!("SAVING");
+        #[cfg(feature = "record")]
+        {
+            println!("REALLY");
+            let route = bincode::encode_to_vec(&self.recording, BINCODE_CONFIG);
 
-        if let Ok(bytes) = route {
-            let _ = std::fs::write("left.route", bytes);
+            if let Ok(bytes) = route {
+                let _ = std::fs::write("left.route", bytes);
+                println!("SAVED");
+            }
         }
     }
 
     async fn route_none(&mut self) {}
 
     async fn route_recorded_left(&mut self) {
+        println!("RUNNING");
         let route = std::fs::read("left.route");
+        println!("parsed");
+
+        if let Err(ref e) = route {
+            println!("{e:?}");
+        }
 
         if let Ok(route) = route {
             let route = bincode::decode_from_slice::<RecordedPath, _>(&route, BINCODE_CONFIG);
-
+            println!("decoded");
             if let Ok((route, _bytes_read)) = route {
+                println!("outt atime");
                 for frame in route.frames {
                     for motor in &mut self.left {
                         let _ = motor.set_voltage(frame.left);
@@ -176,7 +188,11 @@ async fn main(peripherals: Peripherals) {
         MAX_WHEEL,
     );
 
-    let piston = AdiDigitalOut::new(peripherals.adi_a);
+    let mut piston = AdiDigitalOut::new(peripherals.adi_a);
+
+    let _ = piston.set_high();
+
+    println!("WHATS UP");
 
     let robot = Robot {
         controller,
@@ -198,7 +214,6 @@ async fn main(peripherals: Peripherals) {
             [
                 route!("Disable", Robot::route_none),
                 route!("Left (recorded)", Robot::route_recorded_left),
-                #[cfg(feature = "record")]
                 route!("Save Recording", Robot::save_recording),
             ],
         ))

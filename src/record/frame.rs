@@ -9,13 +9,13 @@ use bincode::{
 };
 use vexide::time::sleep_until;
 
-#[derive(Encode, Decode, Default)]
+#[derive(Encode, Decode, Default, Clone, Debug)]
 pub struct TimedFrame<F: Frameable> {
     pub delta_time_micros: u64,
     pub frame: F,
 }
 
-#[derive(Encode, Decode, Default)]
+#[derive(Encode, Decode, Default, Clone, Debug)]
 pub struct Recording<F: Frameable> {
     pub frames: Vec<TimedFrame<F>>,
 }
@@ -62,7 +62,7 @@ pub trait Recordable {
     async fn get_new_frame(&self) -> Self::Frame;
 }
 
-pub trait Frameable = Encode + Decode<()> + Default;
+pub trait Frameable = Encode + Decode<()> + Default + Clone;
 
 impl<F: Frameable> Recording<F> {
     pub fn push_timed(&mut self, delta: Duration, frame: F) {
@@ -84,6 +84,7 @@ impl<F: Frameable> Recording<F> {
         Ok(recording)
     }
 
+    #[cfg(not(feature = "record"))]
     pub async fn playback<R: Recordable<Frame = F>>(self, robot: &mut R) {
         let mut deadline = Instant::now();
 
@@ -93,13 +94,5 @@ impl<F: Frameable> Recording<F> {
             robot.transform_to_frame(&tf.frame).await;
             sleep_until(deadline).await;
         }
-
-        /*
-        for tf in &self frames {
-           let dt = Duration::from_micros(tf.delta_time_micros);
-        sleep(dt).await;
-        robot.transform_to_frame(&tf.frame).await;
-        }
-        * */
     }
 }

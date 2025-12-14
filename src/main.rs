@@ -1,12 +1,15 @@
 #![feature(trait_alias)]
 
-use autons::{prelude::*, simple::Route};
+use autons::prelude::*;
 use bincode::{Decode, Encode};
 use vexide::{adi::digital::LogicLevel, prelude::*};
 
 use crate::{
     mechanisms::TernaryMotor,
-    record::{frame::Recordable, selector::RecorderSelect},
+    record::{
+        frame::Recordable,
+        runtime::AutonomousRecorder,
+    },
     sdcard::is_sdcard_inserted,
 };
 
@@ -28,7 +31,7 @@ struct Robot {
     piston: AdiDigitalOut,
 }
 
-#[derive(Encode, Decode, Default)]
+#[derive(Encode, Decode, Default, Clone)]
 struct RobotFrame {
     left: f64,
     right: f64,
@@ -153,10 +156,17 @@ async fn main(peripherals: Peripherals) {
         piston,
     };
 
-    robot
-        .compete(RecorderSelect::new(
-            display,
-            [Route::new("Disable", |_| Box::pin(async {}))],
-        ))
-        .await;
+    #[cfg(feature = "record")]
+    let (recorder, selector) = AutonomousRecorder::new(
+        robot,
+        display,
+        Controller::UPDATE_INTERVAL,
+        crate::record::selector::RecordTarget::New,
+    );
+
+    #[cfg(not(feature = "record"))]
+    let (recorder, selector) =
+        AutonomousRecorder::new(robot, display, Controller::UPDATE_INTERVAL);
+
+    recorder.compete(selector).await;
 }

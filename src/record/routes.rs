@@ -1,9 +1,22 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, path::PathBuf};
 
 #[derive(Debug, Clone, Default)]
 pub struct RouteIndex {
     /// route id -> display name
     pub map: BTreeMap<u32, String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RouteEntry {
+    pub id: u32,
+    pub display_name: String,
+    pub path: PathBuf,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct RouteLibrary {
+    pub index: RouteIndex,
+    pub entries: Vec<RouteEntry>,
 }
 
 impl RouteIndex {
@@ -54,5 +67,87 @@ impl RouteIndex {
 
     pub fn generate_id(&self) -> u32 {
         self.map.keys().max().unwrap_or(&0) + 1
+    }
+}
+
+impl RouteLibrary {
+    pub const ROUTE_EXTENSION: &'static str = "route";
+
+    pub fn load() -> Self {
+        let index = RouteIndex::load();
+        let mut entries: Vec<RouteEntry> = std::fs::read_dir(".")
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter_map(|entry| {
+                let path = entry.path();
+                let Some(file_stem) = path.file_stem()?.to_str() else {
+                    return None;
+                };
+
+                if path.extension()?.to_str()? != Self::ROUTE_EXTENSION {
+                    return None;
+                }
+
+                let id: u32 = file_stem.parse().ok()?;
+                let display_name = index
+                    .map
+                    .get(&id)
+                    .cloned()
+                    .unwrap_or_else(|| id.to_string());
+
+                Some(RouteEntry {
+                    id,
+                    display_name,
+                    path,
+                })
+            })
+            .collect();
+
+        for (id, display_name) in &index.map {
+            if entries.iter().any(|entry| entry.id == *id) {
+                continue;
+            }
+
+            entries.push(RouteEntry {
+                id: *id,
+                display_name: display_name.clone(),
+                path: Self::path_for(*id),
+            });
+        }
+
+        entries.sort_by_key(|entry| entry.id);
+
+        Self { index, entries }
+    }
+
+    pub fn next_id(&self) -> u32 {
+        self.entries
+            .iter()
+            .map(|entry| entry.id)
+            .max()
+            .map(|max| max + 1)
+            .unwrap_or(1)
+    }
+
+    pub fn path_for(id: u32) -> PathBuf {
+        PathBuf::from(format!("/{id}.{}", Self::ROUTE_EXTENSION))
+    }
+
+    pub fn ensure_entry_name(&mut self, id: u32, name: &str) {
+        self.index.update(id, name);
+        if let Some(entry) = self.entries.iter_mut().find(|entry| entry.id == id) {
+            entry.display_name = name.to_string();
+        } else {
+            self.entries.push(RouteEntry {
+                id,
+                display_name: name.to_string(),
+                path: Self::path_for(id),
+            });
+        }
+    }
+
+    pub fn persist_index(&self) -> std::io::Result<()> {
+        self.index.save()
     }
 }

@@ -16,6 +16,7 @@ icon = "cool-x"
 compress = true
 
 [features]
+record = []
 
 [dependencies]
 autons = "0.2.0"

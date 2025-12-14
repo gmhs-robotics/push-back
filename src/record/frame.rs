@@ -9,13 +9,13 @@ use bincode::{
 };
 use vexide::time::sleep_until;
 
-#[derive(Encode, Decode, Default)]
+#[derive(Encode, Decode, Default, Clone, Debug)]
 pub struct TimedFrame<F: Frameable> {
     pub delta_time_micros: u64,
     pub frame: F,
 }
 
-#[derive(Encode, Decode, Default)]
+#[derive(Encode, Decode, Default, Clone, Debug)]
 pub struct Recording<F: Frameable> {
     pub frames: Vec<TimedFrame<F>>,
 }
@@ -62,9 +62,10 @@ pub trait Recordable {
     async fn get_new_frame(&self) -> Self::Frame;
 }
 
-pub trait Frameable = Encode + Decode<()> + Default;
+pub trait Frameable = Encode + Decode<()> + Default + Clone;
 
 impl<F: Frameable> Recording<F> {
+    #[allow(dead_code)]
     pub fn push_timed(&mut self, delta: Duration, frame: F) {
         self.frames.push(TimedFrame {
             delta_time_micros: delta.as_micros() as u64,
@@ -72,18 +73,21 @@ impl<F: Frameable> Recording<F> {
         });
     }
 
+    #[allow(dead_code)]
     pub fn save<P: AsRef<Path>>(&self, path: P) -> Result<(), RecordingError> {
         let bytes = bincode::encode_to_vec(self, BINCODE_CONFIG)?;
         std::fs::write(path, bytes)?;
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn load<P: AsRef<Path>>(path: P) -> Result<Self, RecordingError> {
         let bytes = std::fs::read(path)?;
         let (recording, _) = bincode::decode_from_slice::<Self, _>(&bytes, BINCODE_CONFIG)?;
         Ok(recording)
     }
 
+    #[allow(dead_code)]
     pub async fn playback<R: Recordable<Frame = F>>(self, robot: &mut R) {
         let mut deadline = Instant::now();
 
@@ -93,13 +97,5 @@ impl<F: Frameable> Recording<F> {
             robot.transform_to_frame(&tf.frame).await;
             sleep_until(deadline).await;
         }
-
-        /*
-        for tf in &self frames {
-           let dt = Duration::from_micros(tf.delta_time_micros);
-        sleep(dt).await;
-        robot.transform_to_frame(&tf.frame).await;
-        }
-        * */
     }
 }

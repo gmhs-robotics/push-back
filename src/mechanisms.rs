@@ -13,6 +13,7 @@ impl TernaryMotor {
         }
     }
 
+    #[allow(dead_code)]
     pub fn update_from_button_state(
         &mut self,
         forward: bool,

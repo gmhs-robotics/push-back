@@ -1,18 +1,16 @@
 use vexide::{prelude::*, smart::PortError};
 
-pub struct BinaryMotor(pub Motor, pub f64);
+pub struct TernaryMotor {
+    pub motor: Motor,
+    baseline_voltage: f64,
+}
 
-impl BinaryMotor {
-    pub fn disable(&mut self) -> Result<f64, PortError> {
-        self.0.set_voltage(0.).map(|_| 0.)
-    }
-
-    pub fn forward(&mut self) -> Result<f64, PortError> {
-        self.0.set_voltage(self.1).map(|_| self.1)
-    }
-
-    pub fn reverse(&mut self) -> Result<f64, PortError> {
-        self.0.set_voltage(-self.1).map(|_| -self.1)
+impl TernaryMotor {
+    pub fn new(motor: Motor, baseline_voltage: f64) -> Self {
+        Self {
+            motor,
+            baseline_voltage,
+        }
     }
 
     pub fn update_from_button_state(
@@ -20,12 +18,20 @@ impl BinaryMotor {
         forward: bool,
         reverse: bool,
     ) -> Result<f64, PortError> {
+        let volts = self.calculate_from_button_state(forward, reverse);
+
+        self.motor.set_voltage(volts)?;
+
+        Ok(volts)
+    }
+
+    pub fn calculate_from_button_state(&self, forward: bool, reverse: bool) -> f64 {
         if forward && !reverse {
-            self.forward()
+            self.baseline_voltage
         } else if reverse && !forward {
-            self.reverse()
+            -self.baseline_voltage
         } else {
-            self.disable()
+            0.
         }
     }
 }

@@ -26,8 +26,6 @@ impl<F: Frameable> RouteRecorder<F> {
     }
 
     pub fn set_target(&mut self, target: RecordTarget) {
-        println!("{target:?}");
-
         self.target = match target {
             RecordTarget::Off => None,
             other => Some(other),
@@ -67,17 +65,14 @@ impl<F: Frameable> RouteRecorder<F> {
     }
 
     pub fn finish(&mut self) -> Option<(RecordTarget, Recording<F>)> {
-        if !self.current.as_ref()?.frames.is_empty() {
+        if self.current.as_ref()?.frames.is_empty() {
             return None;
         }
 
-        println!("2");
         let target = self.target.take()?;
 
-        println!("3");
         let recording = self.current.take()?;
 
-        println!("4?");
         self.last_frame_time = None;
 
         Some((target, recording))
@@ -90,6 +85,7 @@ pub struct RecordingAutonomous<R: Recordable + 'static> {
     pub index: RouteIndex,
     recorder: RouteRecorder<R::Frame>,
     status: StatusHandle<RecordOption>,
+    last_selection: Option<usize>,
 }
 
 #[allow(dead_code)]
@@ -125,6 +121,7 @@ impl<R: Recordable + 'static> RecordingAutonomous<R> {
             index,
             recorder,
             status,
+            last_selection: None,
         }
         .compete(selector)
         .await;
@@ -163,6 +160,16 @@ impl<R: Recordable + 'static> RecordingAutonomous<R> {
 
         Box::pin(async {})
     }
+
+    async fn update_selection(&mut self) {
+        let selection_index = self.status.selection_index();
+
+        if self.last_selection != Some(selection_index) {
+            self.last_selection = Some(selection_index);
+            let option = self.status.selection();
+            self.arm_recording(option).await;
+        }
+    }
 }
 
 #[allow(dead_code)]
@@ -171,6 +178,7 @@ pub struct PlaybackAutonomous<R: Recordable + 'static> {
     pub index: RouteIndex,
     active_route: Option<u32>,
     status: StatusHandle<PlaybackChoice>,
+    last_selection: Option<usize>,
 }
 
 #[allow(dead_code)]
@@ -196,6 +204,7 @@ impl<R: Recordable + 'static> PlaybackAutonomous<R> {
             index,
             active_route: None,
             status,
+            last_selection: None,
         }
         .compete(selector)
         .await;
@@ -207,28 +216,25 @@ impl<R: Recordable + 'static> PlaybackAutonomous<R> {
     ) -> core::pin::Pin<Box<dyn core::future::Future<Output = ()> + '_>> {
         self.active_route = choice.route_id;
 
-        Box::pin(async move {
-            let Some(route_id) = choice.route_id else {
-                return;
-            };
+        Box::pin(async move {})
+    }
 
-            let path = RouteIndex::path_for(route_id);
-            let display_name = self.index.display_name(route_id);
+    async fn update_selection(&mut self) {
+        let selection_index = self.status.selection_index();
 
-            if let Ok(recording) = Recording::load(&path) {
-                self.status.show_status(format!("Playing {display_name}"));
-                recording.playback(&mut self.robot).await;
-            } else {
-                self.status
-                    .show_status(format!("Missing route {display_name}"));
-            }
-        })
+        if self.last_selection != Some(selection_index) {
+            self.last_selection = Some(selection_index);
+            let choice = self.status.selection();
+            self.play_selected(choice).await;
+        }
     }
 }
 
 impl<R: Recordable + 'static> SelectCompete for RecordingAutonomous<R> {
     async fn driver(&mut self) {
         loop {
+            self.update_selection().await;
+
             let frame = self.robot.get_new_frame().await;
             if self.recorder.is_recording() {
                 self.recorder.push_frame(frame.clone());
@@ -240,6 +246,8 @@ impl<R: Recordable + 'static> SelectCompete for RecordingAutonomous<R> {
     }
 
     async fn disabled(&mut self) {
+        self.update_selection().await;
+
         if let Some((target, recording)) = self.recorder.finish() {
             println!("suaved");
             self.save_recording(target, recording).await;
@@ -250,9 +258,35 @@ impl<R: Recordable + 'static> SelectCompete for RecordingAutonomous<R> {
 impl<R: Recordable + 'static> SelectCompete for PlaybackAutonomous<R> {
     async fn driver(&mut self) {
         loop {
+            self.update_selection().await;
+
             let frame = self.robot.get_new_frame().await;
             self.robot.transform_to_frame(&frame).await;
             sleep(R::UPDATE_INTERVAL).await;
+        }
+    }
+
+    async fn disabled(&mut self) {
+        self.update_selection().await;
+    }
+
+    async fn before_route(&mut self) {
+        self.update_selection().await;
+
+        let Some(route_id) = self.active_route else {
+            self.status.show_status("Playback disabled");
+            return;
+        };
+
+        let path = RouteIndex::path_for(route_id);
+        let display_name = self.index.display_name(route_id);
+
+        if let Ok(recording) = Recording::load(&path) {
+            self.status.show_status(format!("Playing {display_name}"));
+            recording.playback(&mut self.robot).await;
+        } else {
+            self.status
+                .show_status(format!("Missing route {display_name}"));
         }
     }
 }

@@ -380,4 +380,15 @@ impl<I: SelectorItem + 'static> StatusHandle<I> {
         });
         state.status_dirty = true;
     }
+
+    pub fn selection_index(&self) -> usize {
+        self.state.borrow().selection
+    }
+
+    pub fn selection(&self) -> I
+    where
+        I: Clone,
+    {
+        self.state.borrow().options[self.state.borrow().selection].clone()
+    }
 }

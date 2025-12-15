@@ -79,9 +79,15 @@ pub struct RecorderSelect<R: 'static, I: SelectorItem + 'static> {
     _task: Task<()>,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct StatusHandle<I: SelectorItem + 'static> {
     state: Rc<RefCell<SelectorState<I>>>,
+}
+
+#[derive(Debug)]
+pub struct SelectionController<I: SelectorItem + Clone + 'static> {
+    status: StatusHandle<I>,
+    last_selection: Option<usize>,
 }
 
 impl<R, I> RecorderSelect<R, I>
@@ -379,5 +385,40 @@ impl<I: SelectorItem + 'static> StatusHandle<I> {
             set_at: Instant::now(),
         });
         state.status_dirty = true;
+    }
+
+    pub fn selection_index(&self) -> usize {
+        self.state.borrow().selection
+    }
+
+    pub fn selection(&self) -> I
+    where
+        I: Clone,
+    {
+        self.state.borrow().options[self.state.borrow().selection].clone()
+    }
+}
+
+impl<I: SelectorItem + Clone + 'static> SelectionController<I> {
+    pub fn new(status: StatusHandle<I>) -> Self {
+        Self {
+            status,
+            last_selection: None,
+        }
+    }
+
+    pub fn status(&self) -> &StatusHandle<I> {
+        &self.status
+    }
+
+    pub fn consume_selection_change(&mut self) -> Option<I> {
+        let selection_index = self.status.selection_index();
+
+        if self.last_selection == Some(selection_index) {
+            return None;
+        }
+
+        self.last_selection = Some(selection_index);
+        Some(self.status.selection())
     }
 }

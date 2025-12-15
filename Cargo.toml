@@ -1,5 +1,5 @@
 [package]
-name = "recorder"
+name = "banana-leclerc"
 version = "0.1.0"
 edition = "2024"
 description = "Team A push-back entry"
@@ -7,8 +7,6 @@ description = "Team A push-back entry"
 [package.metadata.v5]
 upload-strategy = "differential"
 compress = true
-slot = 2
-icon = "code-file"
 
 [profile.release]
 lto = true
@@ -20,19 +18,5 @@ record = []
 [dependencies]
 autons = "0.2.0"
 vex-sdk = "0.28.0"
-
-[dependencies.bincode]
-version = "2.0.1"
-default-features = false
-features = [
-    "alloc",
-    "derive",
-]
-
-[dependencies.vexide]
-version = "0.8.0"
-features = [
-    "full",
-    "vex-sdk-vexcode",
-    "vex-sdk-mock",
-]
+bincode = { version = "2.0.1", default-features = false, features = ["alloc", "derive"] }
+vexide = { version = "0.8.0", features = ["full", "vex-sdk-vexcode", "vex-sdk-mock"] }

@@ -1,44 +1,52 @@
-use autons::prelude::SelectCompete;
+use std::time::Instant;
+
+use autons::prelude::{SelectCompete, SelectCompeteExt};
 use vexide::{prelude::*, time::sleep};
 
+use super::{
+    routes::RouteIndex,
+    selector::{PlaybackChoice, RecordOption, RecordTarget, RecorderSelect, StatusHandle},
+};
 use crate::record::frame::{Frameable, Recordable, Recording};
 
-use super::routes::RouteLibrary;
-#[cfg(feature = "record")]
-use super::selector::{RecordOption, RecordTarget, RecorderSelect, StatusHandle};
-#[cfg(not(feature = "record"))]
-use super::selector::{PlaybackChoice, RecorderSelect};
-
-#[cfg(feature = "record")]
+#[allow(dead_code)]
 #[derive(Debug, Default)]
 pub struct RouteRecorder<F: Frameable> {
     target: Option<RecordTarget>,
     current: Option<Recording<F>>,
-    last_frame_time: Option<std::time::Instant>,
+    last_frame_time: Option<Instant>,
 }
 
-#[cfg(feature = "record")]
+#[allow(dead_code)]
 impl<F: Frameable> RouteRecorder<F> {
-    pub fn new(default_target: RecordTarget) -> Self {
+    pub fn new() -> Self {
         let mut recorder = Self::default();
-        recorder.set_target(default_target);
+        recorder.set_target(RecordTarget::Off);
         recorder
     }
 
     pub fn set_target(&mut self, target: RecordTarget) {
+        println!("{target:?}");
+
         self.target = match target {
             RecordTarget::Off => None,
-            _ => Some(target),
+            other => Some(other),
         };
 
-        if self.target.is_some() {
-            self.current.get_or_insert_with(Recording::default);
-            self.last_frame_time = None;
+        match self.target {
+            Some(_) => {
+                self.current = Some(Recording::default());
+                self.last_frame_time = None;
+            }
+            None => {
+                self.current = None;
+                self.last_frame_time = None;
+            }
         }
     }
 
     pub fn target(&self) -> RecordTarget {
-        self.target.unwrap_or(RecordTarget::Off)
+        self.target.unwrap_or_default()
     }
 
     pub fn is_recording(&self) -> bool {
@@ -47,7 +55,7 @@ impl<F: Frameable> RouteRecorder<F> {
 
     pub fn push_frame(&mut self, frame: F) {
         if let Some(recording) = &mut self.current {
-            let now = std::time::Instant::now();
+            let now = Instant::now();
             let delta = if let Some(last) = self.last_frame_time.replace(now) {
                 now.saturating_duration_since(last)
             } else {
@@ -59,124 +67,166 @@ impl<F: Frameable> RouteRecorder<F> {
     }
 
     pub fn finish(&mut self) -> Option<(RecordTarget, Recording<F>)> {
+        if !self.current.as_ref()?.frames.is_empty() {
+            return None;
+        }
+
+        println!("2");
         let target = self.target.take()?;
+
+        println!("3");
         let recording = self.current.take()?;
+
+        println!("4?");
         self.last_frame_time = None;
+
         Some((target, recording))
     }
 }
 
-#[cfg(feature = "record")]
-pub struct AutonomousRecorder<R: Recordable + 'static> {
+#[allow(dead_code)]
+pub struct RecordingAutonomous<R: Recordable + 'static> {
     pub robot: R,
-    pub library: RouteLibrary,
+    pub index: RouteIndex,
     recorder: RouteRecorder<R::Frame>,
-    driver_tick: std::time::Duration,
-    status: StatusHandle<Self>,
+    status: StatusHandle<RecordOption>,
 }
 
-#[cfg(feature = "record")]
-impl<R: Recordable + 'static> AutonomousRecorder<R> {
-    pub fn new(
-        robot: R,
-        display: Display,
-        driver_tick: std::time::Duration,
-        default_record_target: RecordTarget,
-    ) -> (Self, RecorderSelect<Self>) {
-        let library = RouteLibrary::load();
+#[allow(dead_code)]
+impl<R: Recordable + 'static> RecordingAutonomous<R> {
+    pub async fn compete(robot: R, display: Display) -> ! {
+        let index = RouteIndex::load();
 
-        let mut record_options = vec![RecordOption {
-            label: "Record Off".to_string(),
-            target: RecordTarget::Off,
-        }];
+        let record_options: Vec<RecordOption> = [
+            RecordOption {
+                label: "Record Off".to_owned(),
+                target: RecordTarget::Off,
+            },
+            RecordOption {
+                label: "Record New Route".to_owned(),
+                target: RecordTarget::New,
+            },
+        ]
+        .into_iter()
+        .chain(index.entries().iter().map(|entry| RecordOption {
+            label: format!("Record over {}", entry.display_name),
+            target: RecordTarget::Overwrite(entry.id),
+        }))
+        .collect();
 
-        record_options.push(RecordOption {
-            label: "Record New Route".to_string(),
-            target: RecordTarget::New,
-        });
-
-        for entry in &library.entries {
-            record_options.push(RecordOption {
-                label: format!("Record over {}", entry.display_name),
-                target: RecordTarget::Overwrite(entry.id),
-            });
-        }
-
-        let default_record_selection = record_options
-            .iter()
-            .position(|option| option.target == default_record_target)
-            .unwrap_or(0);
-
-        let selector = RecorderSelect::new(
-            display,
-            record_options,
-            default_record_selection,
-            Self::arm_recording,
-        );
+        let selector = RecorderSelect::new(display, record_options, 0, Self::arm_recording);
 
         let status = selector.status_handle();
 
-        let mut recorder = RouteRecorder::new(selector.record_target());
-        recorder.set_target(default_record_target);
+        let recorder = RouteRecorder::new();
 
-        (
-            Self {
-                robot,
-                library,
-                recorder,
-                driver_tick,
-                status,
-            },
-            selector,
-        )
+        Self {
+            robot,
+            index,
+            recorder,
+            status,
+        }
+        .compete(selector)
+        .await;
     }
 
     async fn save_recording(&mut self, target: RecordTarget, recording: Recording<R::Frame>) {
         let Some(route_id) = (match target {
             RecordTarget::Off => None,
-            RecordTarget::New => Some(self.library.next_id()),
+            RecordTarget::New => Some(self.index.next_id()),
             RecordTarget::Overwrite(id) => Some(id),
         }) else {
             return;
         };
 
-        let display_name = self
-            .library
-            .index
-            .map
-            .get(&route_id)
-            .cloned()
-            .unwrap_or_else(|| route_id.to_string());
+        let display_name = self.index.display_name(route_id);
+        let path = RouteIndex::path_for(route_id);
 
-        let path = RouteLibrary::path_for(route_id);
         if recording.save(&path).is_ok() {
-            self.library.ensure_entry_name(route_id, &display_name);
-            let _ = self.library.persist_index();
-            self.status
-                .show_status(format!("Saved {}", display_name));
+            self.index.update(route_id, &display_name);
+            let _ = self.index.save();
+            self.status.show_status(format!("Saved {display_name}"));
         }
     }
 
-    fn arm_recording(&mut self, target: RecordTarget) {
-        self.recorder.set_target(target);
+    fn arm_recording(
+        &mut self,
+        option: RecordOption,
+    ) -> core::pin::Pin<Box<dyn core::future::Future<Output = ()> + '_>> {
+        self.recorder.set_target(option.target);
+
+        if let RecordTarget::Off = option.target {
+            self.status.show_status("Recording off");
+        } else {
+            self.status.show_status(format!("Armed: {}", option.label));
+        }
+
+        Box::pin(async {})
     }
 }
 
-#[cfg(feature = "record")]
-impl<R: Recordable + 'static> Recordable for AutonomousRecorder<R> {
-    type Frame = R::Frame;
+#[allow(dead_code)]
+pub struct PlaybackAutonomous<R: Recordable + 'static> {
+    pub robot: R,
+    pub index: RouteIndex,
+    active_route: Option<u32>,
+    status: StatusHandle<PlaybackChoice>,
+}
 
-    async fn transform_to_frame(&mut self, frame: &Self::Frame) {
-        self.robot.transform_to_frame(frame).await;
+#[allow(dead_code)]
+impl<R: Recordable + 'static> PlaybackAutonomous<R> {
+    pub async fn compete(robot: R, display: Display) -> ! {
+        let index = RouteIndex::load();
+
+        let mut playback_choices = vec![PlaybackChoice {
+            label: "Disable".to_string(),
+            route_id: None,
+        }];
+
+        playback_choices.extend(index.entries().into_iter().map(|entry| PlaybackChoice {
+            label: entry.display_name,
+            route_id: Some(entry.id),
+        }));
+
+        let selector = RecorderSelect::new(display, playback_choices, 0, Self::play_selected);
+        let status = selector.status_handle();
+
+        Self {
+            robot,
+            index,
+            active_route: None,
+            status,
+        }
+        .compete(selector)
+        .await;
     }
 
-    async fn get_new_frame(&self) -> Self::Frame {
-        self.robot.get_new_frame().await
+    fn play_selected(
+        &mut self,
+        choice: PlaybackChoice,
+    ) -> core::pin::Pin<Box<dyn core::future::Future<Output = ()> + '_>> {
+        self.active_route = choice.route_id;
+
+        Box::pin(async move {
+            let Some(route_id) = choice.route_id else {
+                return;
+            };
+
+            let path = RouteIndex::path_for(route_id);
+            let display_name = self.index.display_name(route_id);
+
+            if let Ok(recording) = Recording::load(&path) {
+                self.status.show_status(format!("Playing {display_name}"));
+                recording.playback(&mut self.robot).await;
+            } else {
+                self.status
+                    .show_status(format!("Missing route {display_name}"));
+            }
+        })
     }
 }
 
-#[cfg(feature = "record")]
-impl<R: Recordable + 'static> SelectCompete for AutonomousRecorder<R> {
+impl<R: Recordable + 'static> SelectCompete for RecordingAutonomous<R> {
     async fn driver(&mut self) {
         loop {
             let frame = self.robot.get_new_frame().await;
@@ -185,104 +235,24 @@ impl<R: Recordable + 'static> SelectCompete for AutonomousRecorder<R> {
             }
 
             self.robot.transform_to_frame(&frame).await;
-            sleep(self.driver_tick).await;
+            sleep(R::UPDATE_INTERVAL).await;
         }
     }
 
     async fn disabled(&mut self) {
         if let Some((target, recording)) = self.recorder.finish() {
+            println!("suaved");
             self.save_recording(target, recording).await;
         }
     }
 }
 
-#[cfg(not(feature = "record"))]
-pub struct AutonomousRecorder<R: Recordable + 'static> {
-    pub robot: R,
-    pub library: RouteLibrary,
-    active_route: Option<u32>,
-    driver_tick: std::time::Duration,
-}
-
-#[cfg(not(feature = "record"))]
-impl<R: Recordable + 'static> AutonomousRecorder<R> {
-    pub fn new(
-        robot: R,
-        display: Display,
-        driver_tick: std::time::Duration,
-    ) -> (Self, RecorderSelect<Self>) {
-        let library = RouteLibrary::load();
-
-        let mut playback_choices = vec![PlaybackChoice {
-            label: "Disable".to_string(),
-            route_id: None,
-        }];
-
-        playback_choices.extend(
-            library
-                .entries
-                .iter()
-                .map(|entry| PlaybackChoice {
-                    label: entry.display_name.clone(),
-                    route_id: Some(entry.id),
-                }),
-        );
-
-        let selector = RecorderSelect::new(display, playback_choices, Self::play_selected);
-
-        (
-            Self {
-                robot,
-                library,
-                active_route: None,
-                driver_tick,
-            },
-            selector,
-        )
-    }
-
-    fn play_selected(
-        &mut self,
-        route_id: Option<u32>,
-    ) -> core::pin::Pin<Box<dyn core::future::Future<Output = ()> + '_>> {
-        self.active_route = route_id;
-
-        Box::pin(async move {
-            let Some(route_id) = route_id else {
-                return;
-            };
-
-            if let Some(entry) = self.library.entries.iter().find(|entry| entry.id == route_id) {
-                if let Ok(recording) = Recording::load(&entry.path) {
-                    recording.playback(&mut self.robot).await;
-                }
-            }
-        })
-    }
-}
-
-#[cfg(not(feature = "record"))]
-impl<R: Recordable + 'static> Recordable for AutonomousRecorder<R> {
-    type Frame = R::Frame;
-
-    async fn transform_to_frame(&mut self, frame: &Self::Frame) {
-        self.robot.transform_to_frame(frame).await;
-    }
-
-    async fn get_new_frame(&self) -> Self::Frame {
-        self.robot.get_new_frame().await
-    }
-}
-
-#[cfg(not(feature = "record"))]
-impl<R: Recordable + 'static> SelectCompete for AutonomousRecorder<R> {
+impl<R: Recordable + 'static> SelectCompete for PlaybackAutonomous<R> {
     async fn driver(&mut self) {
         loop {
             let frame = self.robot.get_new_frame().await;
             self.robot.transform_to_frame(&frame).await;
-            sleep(self.driver_tick).await;
+            sleep(R::UPDATE_INTERVAL).await;
         }
     }
-
-    async fn disabled(&mut self) {}
 }

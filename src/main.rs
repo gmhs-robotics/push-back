@@ -1,17 +1,9 @@
 #![feature(trait_alias)]
 
-use autons::prelude::*;
 use bincode::{Decode, Encode};
 use vexide::{adi::digital::LogicLevel, prelude::*};
 
-use crate::{
-    mechanisms::TernaryMotor,
-    record::{
-        frame::Recordable,
-        runtime::AutonomousRecorder,
-    },
-    sdcard::is_sdcard_inserted,
-};
+use crate::{mechanisms::TernaryMotor, record::frame::Recordable, sdcard::is_sdcard_inserted};
 
 mod mechanisms;
 mod record;
@@ -42,21 +34,9 @@ struct RobotFrame {
     piston_state: bool,
 }
 
-impl SelectCompete for Robot {
-    async fn driver(&mut self) {
-        loop {
-            let frame = self.get_new_frame().await;
-            self.transform_to_frame(&frame).await;
-
-            sleep(Controller::UPDATE_INTERVAL).await;
-        }
-    }
-
-    async fn disabled(&mut self) {}
-}
-
 impl Recordable for Robot {
     type Frame = RobotFrame;
+    const UPDATE_INTERVAL: std::time::Duration = Controller::UPDATE_INTERVAL;
 
     async fn get_new_frame(&self) -> Self::Frame {
         let controller_state = self.controller.state().unwrap_or_default();
@@ -156,17 +136,9 @@ async fn main(peripherals: Peripherals) {
         piston,
     };
 
-    #[cfg(feature = "record")]
-    let (recorder, selector) = AutonomousRecorder::new(
-        robot,
-        display,
-        Controller::UPDATE_INTERVAL,
-        crate::record::selector::RecordTarget::New,
-    );
-
-    #[cfg(not(feature = "record"))]
-    let (recorder, selector) =
-        AutonomousRecorder::new(robot, display, Controller::UPDATE_INTERVAL);
-
-    recorder.compete(selector).await;
+    if cfg!(feature = "record") {
+        record::runtime::RecordingAutonomous::compete(robot, display).await;
+    } else {
+        record::runtime::PlaybackAutonomous::compete(robot, display).await;
+    };
 }

@@ -57,6 +57,7 @@ impl From<bincode::error::DecodeError> for RecordingError {
 
 pub trait Recordable {
     type Frame: Frameable;
+    const UPDATE_INTERVAL: Duration;
 
     async fn transform_to_frame(&mut self, frame: &Self::Frame);
     async fn get_new_frame(&self) -> Self::Frame;
@@ -65,6 +66,7 @@ pub trait Recordable {
 pub trait Frameable = Encode + Decode<()> + Default + Clone;
 
 impl<F: Frameable> Recording<F> {
+    #[allow(dead_code)]
     pub fn push_timed(&mut self, delta: Duration, frame: F) {
         self.frames.push(TimedFrame {
             delta_time_micros: delta.as_micros() as u64,
@@ -72,19 +74,21 @@ impl<F: Frameable> Recording<F> {
         });
     }
 
+    #[allow(dead_code)]
     pub fn save<P: AsRef<Path>>(&self, path: P) -> Result<(), RecordingError> {
         let bytes = bincode::encode_to_vec(self, BINCODE_CONFIG)?;
         std::fs::write(path, bytes)?;
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn load<P: AsRef<Path>>(path: P) -> Result<Self, RecordingError> {
         let bytes = std::fs::read(path)?;
         let (recording, _) = bincode::decode_from_slice::<Self, _>(&bytes, BINCODE_CONFIG)?;
         Ok(recording)
     }
 
-    #[cfg(not(feature = "record"))]
+    #[allow(dead_code)]
     pub async fn playback<R: Recordable<Frame = F>>(self, robot: &mut R) {
         let mut deadline = Instant::now();
 
@@ -92,6 +96,7 @@ impl<F: Frameable> Recording<F> {
             deadline += Duration::from_micros(tf.delta_time_micros);
 
             robot.transform_to_frame(&tf.frame).await;
+
             sleep_until(deadline).await;
         }
     }

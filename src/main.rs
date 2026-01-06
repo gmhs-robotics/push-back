@@ -103,6 +103,7 @@ async fn main(peripherals: Peripherals) {
     }
 
     let controller = peripherals.primary_controller;
+
     let left = [
         Motor::new(peripherals.port_18, Gearset::Green, Direction::Forward),
         Motor::new(peripherals.port_12, Gearset::Green, Direction::Forward),

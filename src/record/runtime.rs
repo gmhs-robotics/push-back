@@ -231,7 +231,9 @@ impl<R: Recordable + 'static> SelectCompete for RecordingAutonomous<R> {
                 self.recorder.push_frame(frame.clone());
             }
 
-            self.robot.transform_to_frame(&frame).await;
+            // TODO:
+            let _ = self.robot.transform_to_frame(&frame).await;
+
             sleep(R::UPDATE_INTERVAL).await;
         }
     }
@@ -251,7 +253,10 @@ impl<R: Recordable + 'static> SelectCompete for PlaybackAutonomous<R> {
             self.update_selection().await;
 
             let frame = self.robot.get_new_frame().await;
-            self.robot.transform_to_frame(&frame).await;
+
+            // TODO:
+            let _ = self.robot.transform_to_frame(&frame).await;
+
             sleep(R::UPDATE_INTERVAL).await;
         }
     }

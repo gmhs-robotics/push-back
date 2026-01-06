@@ -7,7 +7,7 @@ use bincode::{
     Decode, Encode,
     config::{Configuration, LittleEndian, NoLimit, Varint},
 };
-use vexide::time::sleep_until;
+use vexide::{smart::PortError, time::sleep_until};
 
 #[derive(Encode, Decode, Default, Clone, Debug)]
 pub struct TimedFrame<F: Frameable> {
@@ -59,7 +59,7 @@ pub trait Recordable {
     type Frame: Frameable;
     const UPDATE_INTERVAL: Duration;
 
-    async fn transform_to_frame(&mut self, frame: &Self::Frame);
+    async fn transform_to_frame(&mut self, frame: &Self::Frame) -> Result<(), PortError>;
     async fn get_new_frame(&self) -> Self::Frame;
 }
 
@@ -95,7 +95,8 @@ impl<F: Frameable> Recording<F> {
         for tf in self.frames {
             deadline += Duration::from_micros(tf.delta_time_micros);
 
-            robot.transform_to_frame(&tf.frame).await;
+            // TODO: something with this
+            let _ = robot.transform_to_frame(&tf.frame).await;
 
             sleep_until(deadline).await;
         }

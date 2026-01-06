@@ -1,3 +1,5 @@
+use std::ops::Not;
+
 use vexide::{prelude::*, smart::PortError};
 
 pub struct TernaryMotor {
@@ -33,6 +35,38 @@ impl TernaryMotor {
             -self.baseline_voltage
         } else {
             0.
+        }
+    }
+
+    pub fn calculate_from_ternary(&self, ternary: Ternary) -> f64 {
+        match ternary {
+            Ternary::High => self.baseline_voltage,
+            Ternary::Zero => 0.,
+            Ternary::Low => -self.baseline_voltage,
+        }
+    }
+}
+
+pub enum Ternary {
+    High,
+    Low,
+    Zero,
+}
+
+impl From<bool> for Ternary {
+    fn from(value: bool) -> Self {
+        if value { Self::High } else { Self::Low }
+    }
+}
+
+impl Not for Ternary {
+    type Output = Self;
+
+    fn not(self) -> Self::Output {
+        match self {
+            Self::High => Self::Low,
+            Self::Low => Self::High,
+            Self::Zero => Self::Zero,
         }
     }
 }

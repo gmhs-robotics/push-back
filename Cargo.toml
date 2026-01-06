@@ -18,5 +18,8 @@ record = []
 [dependencies]
 autons = "0.2.0"
 vex-sdk = "0.28.0"
-bincode = { version = "2.0.1", default-features = false, features = ["alloc", "derive"] }
 vexide = { version = "0.8.0", features = ["full", "vex-sdk-vexcode", "vex-sdk-mock"] }
+bincode = { version = "2.0.1", default-features = false, features = ["std", "alloc", "derive"] }
+
+[patch.crates-io]
+vexide = { git = "https://github.com/vexide/vexide" }

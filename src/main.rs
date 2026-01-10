@@ -53,8 +53,8 @@ impl Recordable for Robot {
 
         let r1 = controller_state.button_r1.is_pressed();
         let r2 = controller_state.button_r2.is_pressed();
-        let l1 = controller_state.button_l1.is_pressed();
-        let l2 = controller_state.button_l2.is_pressed();
+        let l1_now = controller_state.button_l1.is_now_pressed();
+        // let l2 = controller_state.button_l2.is_pressed();
 
         // r1 r2
         // T  F => -O -I
@@ -65,18 +65,26 @@ impl Recordable for Robot {
         // l2   => +P
         // l1   => -P
 
-        let (intake, outake) = match (r1, r2) {
+        let (intake, outake) = match (r2, r1) {
             (true, false) => (Ternary::Low, Ternary::Low),
             (false, true) => (Ternary::High, Ternary::High),
             (true, true) => (Ternary::High, Ternary::Low),
             (false, false) => (Ternary::Zero, Ternary::Zero),
         };
 
-        let target_piston_state = match (l1, l2) {
+        let current_piston_state = self.piston.is_high().unwrap_or_default();
+
+        let target_piston_state = if l1_now {
+            !current_piston_state
+        } else {
+            current_piston_state
+        };
+
+        /*match (l1, l2) {
             (false, true) => true,
             (true, false) => false,
             (false, false) | (true, true) => self.piston.is_high().unwrap_or_default(),
-        };
+        };*/
 
         let outake = if target_piston_state { outake } else { !outake };
 

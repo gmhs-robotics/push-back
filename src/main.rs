@@ -16,10 +16,10 @@ mod sdcard;
 pub const MAX_WHEEL: f64 = Motor::V5_MAX_VOLTAGE;
 
 struct Robot {
-    controller: Controller,
-
-    left: [Motor; 2],
-    right: [Motor; 2],
+    primary_controller: Controller,
+    // partner_controller: Controller,
+    left: [Motor; 3],
+    right: [Motor; 3],
 
     intake: TernaryMotor,
     outake: TernaryMotor,
@@ -43,7 +43,8 @@ impl Recordable for Robot {
     const UPDATE_INTERVAL: std::time::Duration = Controller::UPDATE_INTERVAL;
 
     async fn get_new_frame(&self) -> Self::Frame {
-        let controller_state = self.controller.state().unwrap_or_default();
+        let controller_state = self.primary_controller.state().unwrap_or_default();
+        // let secondary_controller_state = self.partner_controller.state().unwrap_or_default();
 
         let t = controller_state.right_stick.y();
         let r = controller_state.left_stick.x();
@@ -69,24 +70,25 @@ impl Recordable for Robot {
             (true, false) => (Ternary::Low, Ternary::Low),
             (false, true) => (Ternary::High, Ternary::High),
             (true, true) => (Ternary::High, Ternary::Low),
-            (false, false) => (Ternary::Zero, Ternary::Zero),
+            (false, false) => {
+                // if secondary_controller_state.button_l1.is_pressed() {
+                //    (Ternary::High, Ternary::Low)
+                // } else {
+                (Ternary::Zero, Ternary::Zero)
+                // }
+            }
         };
 
-        let current_piston_state = self.piston.is_high().unwrap_or_default();
+        let piston_state = self.piston.is_high().unwrap_or_default();
 
-        let target_piston_state = if l1_now {
-            !current_piston_state
-        } else {
-            current_piston_state
-        };
+        let target_piston_state = if l1_now { !piston_state } else { piston_state };
+        let outake = if target_piston_state { outake } else { !outake };
 
         /*match (l1, l2) {
             (false, true) => true,
             (true, false) => false,
             (false, false) | (true, true) => self.piston.is_high().unwrap_or_default(),
         };*/
-
-        let outake = if target_piston_state { outake } else { !outake };
 
         let (intake_volts, outake_volts) = (
             self.intake.calculate_from_ternary(intake),
@@ -115,6 +117,10 @@ impl Recordable for Robot {
         let _ = self.outake.motor.set_voltage(frame.outake);
         let _ = self.piston.set_level(frame.piston_state.into());
 
+        // let _ = self
+        //    .controller
+        //    .try_set_text(format!("Piston {}", frame.piston_state), 0, 0);
+
         Ok(())
     }
 }
@@ -125,23 +131,26 @@ async fn main(peripherals: Peripherals) {
         panic!("SD Card not inserted");
     }
 
-    let controller = peripherals.primary_controller;
+    let primary_controller = peripherals.primary_controller;
+    // let partner_controller = peripherals.partner_controller;
 
     let left = [
-        Motor::new(peripherals.port_11, Gearset::Green, Direction::Reverse),
-        Motor::new(peripherals.port_12, Gearset::Green, Direction::Reverse),
+        Motor::new(peripherals.port_18, Gearset::Green, Direction::Reverse),
+        Motor::new(peripherals.port_19, Gearset::Green, Direction::Reverse),
+        Motor::new(peripherals.port_20, Gearset::Green, Direction::Reverse),
     ];
     let right = [
-        Motor::new(peripherals.port_4, Gearset::Green, Direction::Forward),
-        Motor::new(peripherals.port_6, Gearset::Green, Direction::Forward),
+        Motor::new(peripherals.port_8, Gearset::Green, Direction::Forward),
+        Motor::new(peripherals.port_9, Gearset::Green, Direction::Forward),
+        Motor::new(peripherals.port_10, Gearset::Green, Direction::Forward),
     ];
 
     let intake = TernaryMotor::new(
-        Motor::new(peripherals.port_5, Gearset::Green, Direction::Forward),
+        Motor::new(peripherals.port_1, Gearset::Green, Direction::Forward),
         MAX_WHEEL,
     );
     let outake = TernaryMotor::new(
-        Motor::new(peripherals.port_1, Gearset::Green, Direction::Reverse),
+        Motor::new(peripherals.port_2, Gearset::Green, Direction::Reverse),
         MAX_WHEEL,
     );
 
@@ -150,8 +159,8 @@ async fn main(peripherals: Peripherals) {
     let piston = AdiDigitalOut::with_initial_level(peripherals.adi_h, LogicLevel::High);
 
     let robot = Robot {
-        controller,
-
+        primary_controller,
+        // partner_controller,
         left,
         right,
         intake,

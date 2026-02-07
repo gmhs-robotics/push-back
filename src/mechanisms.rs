@@ -47,6 +47,7 @@ impl TernaryMotor {
     }
 }
 
+#[derive(PartialEq)]
 pub enum Ternary {
     High,
     Low,

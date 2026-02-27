@@ -93,12 +93,16 @@ impl<F: Frameable> Recording<F> {
         let mut deadline = Instant::now();
 
         for tf in self.frames {
-            deadline += Duration::from_micros(tf.delta_time_micros);
-
-            // TODO: something with this
-            let _ = robot.transform_to_frame(&tf.frame).await;
+            let frame_delta = Duration::from_micros(tf.delta_time_micros);
+            let Some(next_deadline) = deadline.checked_add(frame_delta) else {
+                break;
+            };
+            deadline = next_deadline;
 
             sleep_until(deadline).await;
+
+            // Apply each frame at its recorded timestamp rather than one frame early.
+            let _ = robot.transform_to_frame(&tf.frame).await;
         }
     }
 }

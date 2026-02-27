@@ -17,7 +17,7 @@ pub const MAX_WHEEL: f64 = Motor::V5_MAX_VOLTAGE;
 
 struct Robot {
     primary_controller: Controller,
-    // partner_controller: Controller,
+
     left: [Motor; 3],
     right: [Motor; 3],
 
@@ -44,7 +44,6 @@ impl Recordable for Robot {
 
     async fn get_new_frame(&self) -> Self::Frame {
         let controller_state = self.primary_controller.state().unwrap_or_default();
-        // let secondary_controller_state = self.partner_controller.state().unwrap_or_default();
 
         let t = controller_state.right_stick.y();
         let r = controller_state.left_stick.x();
@@ -55,7 +54,6 @@ impl Recordable for Robot {
         let r1 = controller_state.button_r1.is_pressed();
         let r2 = controller_state.button_r2.is_pressed();
         let l1_now = controller_state.button_l1.is_now_pressed();
-        // let l2 = controller_state.button_l2.is_pressed();
 
         // r1 r2
         // T  F => -O -I
@@ -70,25 +68,13 @@ impl Recordable for Robot {
             (true, false) => (Ternary::Low, Ternary::Low),
             (false, true) => (Ternary::High, Ternary::High),
             (true, true) => (Ternary::High, Ternary::Low),
-            (false, false) => {
-                // if secondary_controller_state.button_l1.is_pressed() {
-                //    (Ternary::High, Ternary::Low)
-                // } else {
-                (Ternary::Zero, Ternary::Zero)
-                // }
-            }
+            (false, false) => (Ternary::Zero, Ternary::Zero),
         };
 
         let piston_state = self.piston.is_high().unwrap_or_default();
 
         let target_piston_state = if l1_now { !piston_state } else { piston_state };
         let outake = if target_piston_state { outake } else { !outake };
-
-        /*match (l1, l2) {
-            (false, true) => true,
-            (true, false) => false,
-            (false, false) | (true, true) => self.piston.is_high().unwrap_or_default(),
-        };*/
 
         let (intake_volts, outake_volts) = (
             self.intake.calculate_from_ternary(intake),
@@ -116,10 +102,6 @@ impl Recordable for Robot {
         let _ = self.intake.motor.set_voltage(frame.intake);
         let _ = self.outake.motor.set_voltage(frame.outake);
         let _ = self.piston.set_level(frame.piston_state.into());
-
-        // let _ = self
-        //    .controller
-        //    .try_set_text(format!("Piston {}", frame.piston_state), 0, 0);
 
         Ok(())
     }

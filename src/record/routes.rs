@@ -33,10 +33,11 @@ impl RouteIndex {
                 continue;
             }
 
-            out.map.insert(
-                route_id.parse::<u32>().unwrap_or_default(),
-                name.to_string(),
-            );
+            let Ok(route_id) = route_id.parse::<u32>() else {
+                continue;
+            };
+
+            out.map.insert(route_id, name.to_string());
         }
 
         out
@@ -85,6 +86,6 @@ impl RouteIndex {
     }
 
     pub fn path_for(id: u32) -> PathBuf {
-        PathBuf::from(format!("/{id}.{}", Self::ROUTE_EXTENSION))
+        PathBuf::from(format!("{id}.{}", Self::ROUTE_EXTENSION))
     }
 }

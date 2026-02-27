@@ -27,6 +27,7 @@
       {
         devShell = pkgs.mkShell {
           buildInputs = [
+            pkgs.ripgrep
             cargo-v5'
             (rustToolchain.override {
               extensions = [

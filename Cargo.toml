@@ -20,6 +20,11 @@ autons = "0.2.0"
 vex-sdk = "0.28.0"
 vexide = { version = "0.8.0", features = ["full", "vex-sdk-vexcode", "vex-sdk-mock"] }
 bincode = { version = "2.0.1", default-features = false, features = ["std", "alloc", "derive"] }
+ozton = "0.2.0"
+ozton-record = "0.2.0"
+async-trait = "0.1.89"
 
 [patch.crates-io]
 vexide = { git = "https://github.com/vexide/vexide" }
+ozton = { git = "https://github.com/gmhs-robotics/ozton" }
+ozton-record = { git = "https://github.com/gmhs-robotics/ozton" }

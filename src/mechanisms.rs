@@ -1,6 +1,11 @@
 use std::ops::Not;
 
+use ozton::record::FrameType;
 use vexide::{prelude::*, smart::PortError};
+
+impl FrameType for TernaryMotor {
+    type Output = f64;
+}
 
 pub struct TernaryMotor {
     pub motor: Motor,
@@ -71,3 +76,5 @@ impl Not for Ternary {
         }
     }
 }
+
+

@@ -1,21 +1,20 @@
 #![feature(trait_alias)]
 
-use bincode::{Decode, Encode};
+use ozton::{record::frame::Recordable};
 use vexide::{adi::digital::LogicLevel, prelude::*, smart::PortError};
 
 use crate::{
-    mechanisms::{Ternary, TernaryMotor},
-    record::frame::Recordable,
-    sdcard::is_sdcard_inserted,
+    mechanisms::{Ternary, TernaryMotor}, sdcard::is_sdcard_inserted
 };
 
 mod mechanisms;
-mod record;
 mod sdcard;
 
 pub const MAX_WHEEL: f64 = Motor::V5_MAX_VOLTAGE;
 
+#[derive(ozton::derive::RobotFrame)]
 struct Robot {
+    #[frame(skip)]
     primary_controller: Controller,
 
     left: [Motor; 3],
@@ -27,17 +26,7 @@ struct Robot {
     piston: AdiDigitalOut,
 }
 
-#[derive(Encode, Decode, Default, Clone)]
-struct RobotFrame {
-    left: f64,
-    right: f64,
-
-    intake: f64,
-    outake: f64,
-
-    piston_state: bool,
-}
-
+#[async_trait::async_trait(?Send)]
 impl Recordable for Robot {
     type Frame = RobotFrame;
     const UPDATE_INTERVAL: std::time::Duration = Controller::UPDATE_INTERVAL;
@@ -86,7 +75,7 @@ impl Recordable for Robot {
             right: right_volts,
             intake: intake_volts,
             outake: outake_volts,
-            piston_state: target_piston_state,
+            piston: target_piston_state,
         }
     }
 
@@ -101,7 +90,7 @@ impl Recordable for Robot {
 
         let _ = self.intake.motor.set_voltage(frame.intake);
         let _ = self.outake.motor.set_voltage(frame.outake);
-        let _ = self.piston.set_level(frame.piston_state.into());
+        let _ = self.piston.set_level(frame.piston.into());
 
         Ok(())
     }
@@ -152,8 +141,8 @@ async fn main(peripherals: Peripherals) {
     };
 
     if cfg!(feature = "record") {
-        record::runtime::RecordingAutonomous::compete(robot, display).await;
+        ozton::record::runtime::RecordingAutonomous::compete(robot, display).await;
     } else {
-        record::runtime::PlaybackAutonomous::compete(robot, display).await;
+        ozton::record::runtime::PlaybackAutonomous::compete(robot, display).await;
     };
 }

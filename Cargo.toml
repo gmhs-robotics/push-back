@@ -25,6 +25,5 @@ ozton-record = "0.2.0"
 async-trait = "0.1.89"
 
 [patch.crates-io]
-vexide = { git = "https://github.com/vexide/vexide" }
-ozton = { git = "https://github.com/gmhs-robotics/ozton" }
-ozton-record = { git = "https://github.com/gmhs-robotics/ozton" }
+ozton = { path = "../ozton/packages/ozton" }
+ozton-record = { path = "../ozton/packages/ozton-record" }

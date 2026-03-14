@@ -1,57 +1,57 @@
 #![feature(trait_alias)]
 
-use ozton::{record::frame::Recordable};
-use vexide::{adi::digital::LogicLevel, prelude::*, smart::PortError};
+use std::time::Duration;
+
+use ozton::{
+    derive::RecordedRobot,
+    drivetrain::model::Differential,
+    prelude::{Drivetrain, NoTracking, RecordableDrivetrain},
+    record::{
+        DifferentialVoltageFrame, Recordable,
+        runtime::{PlaybackAutonomous, RecordingAutonomous},
+    },
+};
+use vexide::{adi::digital::LogicLevel, prelude::*};
 
 use crate::{
-    mechanisms::{Ternary, TernaryMotor}, sdcard::is_sdcard_inserted
+    mechanisms::{Ternary, TernaryMotor, adi_toggle_pure},
+    sdcard::is_sdcard_inserted,
 };
 
 mod mechanisms;
 mod sdcard;
 
 pub const MAX_WHEEL: f64 = Motor::V5_MAX_VOLTAGE;
+const RECORD_DRIVETRAIN_LIMIT: f64 = 0.3;
 
-#[derive(ozton::derive::RobotFrame)]
+#[derive(RecordedRobot)]
 struct Robot {
-    #[frame(skip)]
+    #[record(skip)]
     primary_controller: Controller,
 
-    left: [Motor; 3],
-    right: [Motor; 3],
-
+    drivetrain: RecordableDrivetrain<Differential, NoTracking>,
     intake: TernaryMotor,
     outake: TernaryMotor,
 
-    piston: AdiDigitalOut,
+    switch: AdiDigitalOut,
+    descore: AdiDigitalOut,
 }
 
-#[async_trait::async_trait(?Send)]
+#[ozton::record::async_trait(?Send)]
 impl Recordable for Robot {
-    type Frame = RobotFrame;
-    const UPDATE_INTERVAL: std::time::Duration = Controller::UPDATE_INTERVAL;
+    const UPDATE_INTERVAL: Duration = Controller::UPDATE_INTERVAL;
 
     async fn get_new_frame(&self) -> Self::Frame {
         let controller_state = self.primary_controller.state().unwrap_or_default();
 
-        let t = controller_state.right_stick.y();
-        let r = controller_state.left_stick.x();
-
-        let left_volts = (t + r) * MAX_WHEEL;
-        let right_volts = (t - r) * MAX_WHEEL;
+        let throttle = -controller_state.right_stick.y();
+        let turn = controller_state.left_stick.x();
 
         let r1 = controller_state.button_r1.is_pressed();
         let r2 = controller_state.button_r2.is_pressed();
-        let l1_now = controller_state.button_l1.is_now_pressed();
 
-        // r1 r2
-        // T  F => -O -I
-        // F  T => +O +I
-        // T  T => -O +I
-        // F  F =>  I  O
-        //
-        // l2   => +P
-        // l1   => -P
+        let l1_now = controller_state.button_l1.is_now_pressed();
+        let l2_now = controller_state.button_l2.is_now_pressed();
 
         let (intake, outake) = match (r2, r1) {
             (true, false) => (Ternary::Low, Ternary::Low),
@@ -60,39 +60,28 @@ impl Recordable for Robot {
             (false, false) => (Ternary::Zero, Ternary::Zero),
         };
 
-        let piston_state = self.piston.is_high().unwrap_or_default();
+        let switch = adi_toggle_pure(&self.switch, l1_now).unwrap_or_default();
+        let descore = adi_toggle_pure(&self.descore, l2_now).unwrap_or_default();
 
-        let target_piston_state = if l1_now { !piston_state } else { piston_state };
-        let outake = if target_piston_state { outake } else { !outake };
+        let outake = if switch { outake } else { !outake };
 
-        let (intake_volts, outake_volts) = (
-            self.intake.calculate_from_ternary(intake),
-            self.outake.calculate_from_ternary(outake),
-        );
+        let mut drivetrain = DifferentialVoltageFrame::arcade(throttle, turn);
+        if cfg!(feature = "record") {
+            drivetrain.left *= RECORD_DRIVETRAIN_LIMIT;
+            drivetrain.right *= RECORD_DRIVETRAIN_LIMIT;
+        }
 
         Self::Frame {
-            left: left_volts,
-            right: right_volts,
-            intake: intake_volts,
-            outake: outake_volts,
-            piston: target_piston_state,
+            drivetrain,
+            intake: self.intake.calculate_from_ternary(intake),
+            outake: self.outake.calculate_from_ternary(outake),
+            switch,
+            descore,
         }
     }
 
-    async fn transform_to_frame(&mut self, frame: &Self::Frame) -> Result<(), PortError> {
-        for motor in &mut self.left {
-            let _ = motor.set_voltage(frame.left);
-        }
-
-        for motor in &mut self.right {
-            let _ = motor.set_voltage(frame.right);
-        }
-
-        let _ = self.intake.motor.set_voltage(frame.intake);
-        let _ = self.outake.motor.set_voltage(frame.outake);
-        let _ = self.piston.set_level(frame.piston.into());
-
-        Ok(())
+    async fn on_save(&mut self) {
+        let _ = self.primary_controller.rumble(".").await;
     }
 }
 
@@ -102,47 +91,46 @@ async fn main(peripherals: Peripherals) {
         panic!("SD Card not inserted");
     }
 
-    let primary_controller = peripherals.primary_controller;
-    // let partner_controller = peripherals.partner_controller;
-
     let left = [
         Motor::new(peripherals.port_18, Gearset::Blue, Direction::Reverse),
         Motor::new(peripherals.port_19, Gearset::Blue, Direction::Reverse),
         Motor::new(peripherals.port_20, Gearset::Blue, Direction::Reverse),
     ];
     let right = [
-        Motor::new(peripherals.port_8, Gearset::Blue, Direction::Forward),
-        Motor::new(peripherals.port_9, Gearset::Blue, Direction::Forward),
-        Motor::new(peripherals.port_10, Gearset::Blue, Direction::Forward),
+        Motor::new(peripherals.port_11, Gearset::Blue, Direction::Forward),
+        Motor::new(peripherals.port_12, Gearset::Blue, Direction::Forward),
+        Motor::new(peripherals.port_13, Gearset::Blue, Direction::Forward),
     ];
 
     let intake = TernaryMotor::new(
-        Motor::new(peripherals.port_3, Gearset::Green, Direction::Forward),
+        Motor::new(peripherals.port_17, Gearset::Green, Direction::Forward),
         MAX_WHEEL,
     );
     let outake = TernaryMotor::new(
-        Motor::new(peripherals.port_2, Gearset::Green, Direction::Reverse),
+        Motor::new(peripherals.port_16, Gearset::Green, Direction::Reverse),
         MAX_WHEEL,
     );
 
     let display = peripherals.display;
 
-    let piston = AdiDigitalOut::with_initial_level(peripherals.adi_h, LogicLevel::High);
+    let switch = AdiDigitalOut::with_initial_level(peripherals.adi_h, LogicLevel::High);
+    let descore = AdiDigitalOut::with_initial_level(peripherals.adi_g, LogicLevel::Low);
 
     let robot = Robot {
-        primary_controller,
-        // partner_controller,
-        left,
-        right,
+        primary_controller: peripherals.primary_controller,
+        drivetrain: RecordableDrivetrain::new(Drivetrain::new(
+            Differential::new(left, right),
+            NoTracking,
+        )),
         intake,
         outake,
-
-        piston,
+        switch,
+        descore,
     };
 
     if cfg!(feature = "record") {
-        ozton::record::runtime::RecordingAutonomous::compete(robot, display).await;
+        RecordingAutonomous::compete(robot, display).await;
     } else {
-        ozton::record::runtime::PlaybackAutonomous::compete(robot, display).await;
-    };
+        PlaybackAutonomous::compete(robot, display).await;
+    }
 }
